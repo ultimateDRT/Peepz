@@ -1,22 +1,54 @@
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../theme';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import { colors, radii, shadows, spacing, typography } from '../theme';
 
 type Props = {
   size?: 'sm' | 'lg';
 };
 
-/** Minimal mark: a tiny speech bubble, matching the Peep metaphor. */
 export function PeepLogo({ size = 'lg' }: Props) {
   const isLarge = size === 'lg';
+  const reduceMotion = usePrefersReducedMotion();
+  const pulse = useSharedValue(1);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    pulse.value = withRepeat(
+      withTiming(1.08, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+  }, [pulse, reduceMotion]);
+
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+  }));
+
   return (
     <View style={styles.wrap} accessibilityRole="header">
-      <View style={[styles.mark, isLarge ? styles.markLg : styles.markSm]}>
-        <View style={[styles.bubble, isLarge ? styles.bubbleLg : styles.bubbleSm]} />
+      <Animated.View style={[styles.mark, isLarge ? styles.markLg : styles.markSm, anim]}>
+        <LinearGradient
+          colors={[colors.electricPurple, colors.cyan]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.bubble, isLarge ? styles.bubbleLg : styles.bubbleSm, shadows.glow]}
+        />
         <View style={[styles.tail, isLarge ? styles.tailLg : styles.tailSm]} />
-      </View>
-      <Text style={[styles.wordmark, isLarge ? styles.wordLg : styles.wordSm]}>
-        Peepzi
-      </Text>
+        <Text style={[styles.face, isLarge ? styles.faceLg : styles.faceSm]}>😎</Text>
+      </Animated.View>
+      <Text style={[typography.brand, !isLarge && styles.wordSm]}>Peepzi</Text>
+      {isLarge ? (
+        <Text style={styles.tag}>Be seen your way ✨</Text>
+      ) : null}
     </View>
   );
 }
@@ -24,62 +56,69 @@ export function PeepLogo({ size = 'lg' }: Props) {
 const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   mark: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
   markLg: {
-    width: 72,
+    width: 96,
+    height: 96,
   },
   markSm: {
-    width: 40,
+    width: 56,
+    height: 56,
   },
   bubble: {
-    backgroundColor: colors.purple,
-    borderRadius: 16,
-    shadowColor: colors.purple,
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   bubbleLg: {
-    width: 56,
-    height: 40,
+    width: 72,
+    height: 52,
   },
   bubbleSm: {
-    width: 32,
-    height: 22,
-    borderRadius: 10,
+    width: 42,
+    height: 30,
+    borderRadius: 14,
   },
   tail: {
     width: 0,
     height: 0,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: colors.purple,
+    borderTopColor: colors.cyan,
     marginTop: -1,
   },
   tailLg: {
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderTopWidth: 10,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderTopWidth: 12,
   },
   tailSm: {
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderTopWidth: 6,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
   },
-  wordmark: {
-    fontWeight: '800',
-    color: colors.textPrimary,
-    letterSpacing: -0.6,
+  face: {
+    position: 'absolute',
+    top: 10,
   },
-  wordLg: {
-    fontSize: 44,
+  faceLg: {
+    fontSize: 22,
+  },
+  faceSm: {
+    fontSize: 14,
+    top: 6,
   },
   wordSm: {
     fontSize: 22,
+  },
+  tag: {
+    color: colors.textSecondary,
+    fontWeight: '700',
+    fontSize: 15,
   },
 });

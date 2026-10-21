@@ -53,18 +53,21 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: colors.backgroundMuted,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
     borderColor: colors.surfaceBorder,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
     color: colors.textPrimary,
     fontSize: 16,
+    fontWeight: '600',
   },
   inputError: {
     borderColor: colors.danger,
@@ -72,6 +75,6 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { RefreshCw, Wifi } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,18 +8,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Card } from '../components/Card';
 import { ConnectionStatusBanner } from '../components/ConnectionStatusBanner';
-import { LinearGradientFallback } from '../components/LinearGradientFallback';
 import { PeepBubble } from '../components/PeepBubble';
-import { PrimaryButton } from '../components/PrimaryButton';
+import { PillButton } from '../components/PillButton';
+import { Screen } from '../components/Screen';
 import { DISCOVERY_DEFAULTS } from '../config/discovery';
 import { useProfile } from '../context/ProfileContext';
 import type { DiscoverScreenProps } from '../navigation/types';
 import { usePresence } from '../presence/PresenceContext';
 import { colors, radii, spacing, typography } from '../theme';
 
-export function DiscoverScreen({ navigation }: DiscoverScreenProps) {
+export function DiscoverScreen(_props: DiscoverScreenProps) {
   const { profile } = useProfile();
   const {
     peers,
@@ -30,6 +31,11 @@ export function DiscoverScreen({ navigation }: DiscoverScreenProps) {
   const [hostDraft, setHostDraft] = useState(serverHost);
   const [savingHost, setSavingHost] = useState(false);
 
+  const visiblePeers = useMemo(() => {
+    const blocked = new Set(profile?.blockedDeviceIds ?? []);
+    return peers.filter((p) => !blocked.has(p.deviceId));
+  }, [peers, profile?.blockedDeviceIds]);
+
   const onSaveHost = async () => {
     setSavingHost(true);
     try {
@@ -40,174 +46,180 @@ export function DiscoverScreen({ navigation }: DiscoverScreenProps) {
   };
 
   return (
-    <LinearGradientFallback>
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
-        <View style={styles.header}>
-          <PrimaryButton
-            label="← Back"
-            variant="ghost"
-            onPress={() => navigation.goBack()}
-            style={styles.back}
-          />
-          <Text style={styles.title}>Discover</Text>
-          <Text style={styles.sub}>
-            Other Peeps in your private room
-            {profile?.discoverable
-              ? ' — you are discoverable.'
-              : ' — turn Discoverable on to appear to others.'}
-          </Text>
-        </View>
-
+    <Screen padded={false}>
+      <View style={styles.pad}>
+        <Text style={styles.title}>Discover Peeps 👀</Text>
+        <Text style={styles.sub}>
+          {profile?.discoverable
+            ? 'You’re visible in the private test room.'
+            : 'You’re hidden — turn Discoverable on from Home to appear.'}
+        </Text>
         <ConnectionStatusBanner />
+      </View>
 
-        <View style={styles.hostBlock}>
-          <Text style={styles.hostLabel}>Presence server LAN IP</Text>
-          <TextInput
-            value={hostDraft}
-            onChangeText={setHostDraft}
-            placeholder="192.168.x.x"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="numbers-and-punctuation"
-            style={styles.hostInput}
-          />
-          <Text style={styles.hostHint}>
-            Use your Windows PC Wi‑Fi IP (ipconfig). Never localhost on the phone.
-            Port {DISCOVERY_DEFAULTS.serverPort}.
-          </Text>
-          <PrimaryButton
-            label={savingHost ? 'Saving…' : 'Save & reconnect'}
-            variant="secondary"
-            onPress={onSaveHost}
-            disabled={savingHost || !hostDraft.trim()}
-            loading={savingHost}
-          />
-        </View>
-
-        <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>
-            Nearby ({peers.length})
-          </Text>
-          <PrimaryButton
-            label="Refresh"
-            variant="ghost"
-            onPress={refreshPeers}
-            style={styles.refresh}
-          />
-        </View>
-
-        {connectionStatus === 'connecting' || connectionStatus === 'reconnecting' ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={colors.purple} />
-          </View>
-        ) : null}
-
-        <FlatList
-          data={peers}
-          keyExtractor={(item) => item.deviceId}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No one else yet</Text>
-              <Text style={styles.emptyBody}>
-                Start the presence server on your PC, put every phone on the same
-                Wi‑Fi, set the LAN IP above, and toggle Discoverable on each Peep.
+      <FlatList
+        data={visiblePeers}
+        keyExtractor={(item) => item.deviceId}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <View style={styles.headerBlock}>
+            <Card style={styles.hostCard}>
+              <Text style={styles.hostLabel}>Presence server LAN IP</Text>
+              <TextInput
+                value={hostDraft}
+                onChangeText={setHostDraft}
+                placeholder="192.168.x.x"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+                style={styles.hostInput}
+              />
+              <Text style={styles.hostHint}>
+                Never localhost on iPhone. Port {DISCOVERY_DEFAULTS.serverPort}.
               </Text>
+              <PillButton
+                label={savingHost ? 'Saving…' : 'Save & reconnect'}
+                variant="secondary"
+                onPress={onSaveHost}
+                disabled={savingHost || !hostDraft.trim()}
+                loading={savingHost}
+              />
+            </Card>
+
+            <View style={styles.legend}>
+              <View style={styles.legendChip}>
+                <Wifi size={14} color={colors.cyanDeep} />
+                <Text style={styles.legendText}>Connected (Wi‑Fi test)</Text>
+              </View>
+              <View style={[styles.legendChip, styles.legendMuted]}>
+                <Text style={styles.legendText}>Nearby AR — coming soon</Text>
+              </View>
             </View>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.peer}>
-              <PeepBubble profile={item} size="md" />
+
+            <View style={styles.listHeader}>
+              <Text style={styles.listTitle}>
+                Connected peeps ({visiblePeers.length})
+              </Text>
+              <PillButton
+                label="Refresh"
+                variant="ghost"
+                icon={<RefreshCw size={16} color={colors.electricPurple} />}
+                onPress={refreshPeers}
+                style={styles.refresh}
+              />
             </View>
-          )}
-        />
-      </SafeAreaView>
-    </LinearGradientFallback>
+
+            {connectionStatus === 'connecting' ||
+            connectionStatus === 'reconnecting' ? (
+              <ActivityIndicator color={colors.electricPurple} />
+            ) : null}
+          </View>
+        }
+        ListEmptyComponent={
+          <Card style={styles.empty}>
+            <Text style={styles.emptyTitle}>Nobody else yet 👻</Text>
+            <Text style={styles.emptyBody}>
+              Start the presence server, set the LAN IP, and flip Discoverable on
+              each phone. These are connected test users — not GPS “nearby” yet.
+            </Text>
+          </Card>
+        }
+        renderItem={({ item }) => (
+          <Card style={styles.peerCard}>
+            <View style={styles.peerTag}>
+              <Text style={styles.peerTagText}>Connected · Wi‑Fi test</Text>
+            </View>
+            <PeepBubble
+              profile={{
+                name: item.name,
+                status: item.status,
+                avatarEmoji: '👾',
+                bubbleThemeId: 'cyan',
+                hideAge: true,
+              }}
+              size="md"
+              float={false}
+            />
+            <Text style={styles.privacyNote}>Age hidden · no DMs</Text>
+          </Card>
+        )}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
+  pad: {
     paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  title: { ...typography.h1 },
+  sub: { ...typography.body },
+  list: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
-  header: {
-    gap: spacing.xs,
-  },
-  back: {
-    alignSelf: 'flex-start',
-    minHeight: 40,
-    paddingHorizontal: 0,
-  },
-  title: {
-    ...typography.h1,
-  },
-  sub: {
-    ...typography.body,
-  },
-  hostBlock: {
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
-    padding: spacing.md,
-  },
-  hostLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  headerBlock: { gap: spacing.md, marginBottom: spacing.sm },
+  hostCard: { gap: spacing.sm },
+  hostLabel: { ...typography.label },
   hostInput: {
-    backgroundColor: colors.backgroundMuted,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     color: colors.textPrimary,
     fontSize: 16,
+    fontWeight: '600',
   },
-  hostHint: {
-    ...typography.caption,
-    lineHeight: 18,
+  hostHint: { ...typography.caption },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  legendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.cyan,
+  },
+  legendMuted: {
+    borderColor: colors.surfaceBorder,
+    opacity: 0.75,
+  },
+  legendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   listHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  listTitle: {
-    ...typography.bodyStrong,
+  listTitle: { ...typography.bodyStrong },
+  refresh: { minHeight: 40, paddingHorizontal: spacing.sm },
+  empty: { gap: spacing.sm, alignItems: 'center' },
+  emptyTitle: { ...typography.h2, textAlign: 'center' },
+  emptyBody: { ...typography.body, textAlign: 'center' },
+  peerCard: { alignItems: 'center', gap: spacing.sm },
+  peerTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.lavenderSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
   },
-  refresh: {
-    minHeight: 36,
-    paddingHorizontal: spacing.sm,
+  peerTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.electricPurpleDeep,
   },
-  list: {
-    paddingBottom: spacing.xl,
-    gap: spacing.lg,
-  },
-  peer: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  empty: {
-    paddingVertical: spacing.xl,
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    ...typography.h2,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    ...typography.body,
-    textAlign: 'center',
-  },
-  centered: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
+  privacyNote: { ...typography.caption },
 });

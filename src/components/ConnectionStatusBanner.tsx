@@ -1,3 +1,4 @@
+import { Wifi, WifiOff } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePresence } from '../presence/PresenceContext';
 import type { ConnectionStatus } from '../presence/types';
@@ -5,31 +6,26 @@ import { colors, radii, spacing } from '../theme';
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   idle: 'Presence idle',
-  connecting: 'Connecting to presence…',
-  connected: 'Presence connected',
+  connecting: 'Connecting…',
+  connected: 'Live on Wi‑Fi',
   reconnecting: 'Reconnecting…',
-  error: 'Presence connection error',
-  disconnected: 'Presence disconnected',
-};
-
-const STATUS_COLOR: Record<ConnectionStatus, string> = {
-  idle: colors.textMuted,
-  connecting: colors.blue,
-  connected: colors.success,
-  reconnecting: colors.warning,
-  error: colors.danger,
-  disconnected: colors.textMuted,
+  error: 'Connection issue',
+  disconnected: 'Disconnected',
 };
 
 export function ConnectionStatusBanner() {
   const { connectionStatus, connectionError, clearError, serverHost } =
     usePresence();
-  const color = STATUS_COLOR[connectionStatus];
+  const ok = connectionStatus === 'connected';
 
   return (
     <View style={styles.wrap}>
       <View style={styles.row}>
-        <View style={[styles.dot, { backgroundColor: color }]} />
+        {ok ? (
+          <Wifi size={16} color={colors.success} />
+        ) : (
+          <WifiOff size={16} color={colors.coralDeep} />
+        )}
         <Text style={styles.label}>{STATUS_LABEL[connectionStatus]}</Text>
       </View>
       <Text style={styles.host} numberOfLines={1}>
@@ -46,8 +42,8 @@ export function ConnectionStatusBanner() {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    backgroundColor: colors.surfaceGlass,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
     paddingHorizontal: spacing.md,
@@ -59,24 +55,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: radii.full,
-  },
   label: {
     color: colors.textPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   host: {
     color: colors.textMuted,
     fontSize: 12,
+    fontWeight: '600',
   },
   error: {
     color: colors.danger,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 2,
   },
 });

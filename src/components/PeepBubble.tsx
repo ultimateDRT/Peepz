@@ -1,96 +1,129 @@
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radii, spacing } from '../theme';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import { colors, getBubbleTheme, radii, shadows, spacing } from '../theme';
 import {
+  PEEP_STATUS_EMOJI,
   PEEP_STATUS_LABELS,
-  type PeepProfile,
   type PeepStatus,
 } from '../types/peep';
 
-const STATUS_COLORS: Record<PeepStatus, string> = {
-  available: colors.statusAvailable,
-  looking: colors.statusLooking,
-  busy: colors.statusBusy,
-  dnd: colors.statusDnd,
+type BubbleProfile = {
+  name: string;
+  status: PeepStatus;
+  avatarEmoji?: string;
+  bubbleThemeId?: string;
+  age?: number;
+  /** When true, age is never rendered (default for public discover cards). */
+  hideAge?: boolean;
 };
 
 type Props = {
-  profile: Pick<PeepProfile, 'name' | 'age' | 'status'>;
-  size?: 'md' | 'lg';
-  /** When true, show a soft head under the chat-bubble tail (default). */
+  profile: BubbleProfile;
+  size?: 'sm' | 'md' | 'lg';
   showHead?: boolean;
+  float?: boolean;
 };
 
-/**
- * Speech-bubble Peep — the shape that will float above someone’s head in AR.
- * Rounded chat balloon + downward tail + optional head avatar.
- */
 export function PeepBubble({
   profile,
   size = 'lg',
   showHead = true,
+  float = true,
 }: Props) {
+  const reduceMotion = usePrefersReducedMotion();
+  const theme = getBubbleTheme(profile.bubbleThemeId);
   const isLarge = size === 'lg';
-  const statusColor = STATUS_COLORS[profile.status];
-  const initial = profile.name.trim().charAt(0).toUpperCase() || '?';
-  const displayName = profile.name.trim() || 'Your Peep';
+  const isSm = size === 'sm';
+  const bob = useSharedValue(0);
+
+  useEffect(() => {
+    if (!float || reduceMotion) {
+      bob.value = 0;
+      return;
+    }
+    bob.value = withRepeat(
+      withSequence(
+        withTiming(-8, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(8, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      true,
+    );
+  }, [bob, float, reduceMotion]);
+
+  const floatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: bob.value }],
+  }));
+
+  const avatar = profile.avatarEmoji || '😎';
+  const mood = PEEP_STATUS_EMOJI[profile.status];
 
   return (
-    <View
-      style={styles.wrap}
-      accessibilityLabel={`${displayName}, age ${profile.age || '—'}, ${PEEP_STATUS_LABELS[profile.status]}`}
+    <Animated.View
+      style={[styles.wrap, floatStyle]}
+      accessibilityLabel={`${profile.name}, ${PEEP_STATUS_LABELS[profile.status]}`}
     >
-      {/* Chat balloon */}
       <View
         style={[
           styles.balloon,
-          isLarge ? styles.balloonLg : styles.balloonMd,
-          { borderColor: statusColor },
+          isLarge && styles.balloonLg,
+          isSm && styles.balloonSm,
+          shadows.float,
         ]}
       >
+        <LinearGradient
+          colors={[theme.from, theme.to]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.sheen} />
+        <Text style={[styles.avatar, isLarge && styles.avatarLg, isSm && styles.avatarSm]}>
+          {avatar}
+        </Text>
         <Text
-          style={[styles.name, isLarge ? styles.nameLg : styles.nameMd]}
+          style={[styles.name, isLarge && styles.nameLg, isSm && styles.nameSm]}
           numberOfLines={1}
         >
-          {displayName}
+          {profile.name}
         </Text>
-        {profile.age ? (
-          <Text style={[styles.meta, isLarge ? styles.metaLg : styles.metaMd]}>
-            {profile.age}
-          </Text>
-        ) : null}
-        <View style={[styles.statusRow, { backgroundColor: `${statusColor}18` }]}>
-          <View style={[styles.dot, { backgroundColor: statusColor }]} />
-          <Text
-            style={[styles.statusText, { color: statusColor }]}
-            numberOfLines={1}
-          >
+        <View style={styles.moodPill}>
+          <Text style={styles.moodEmoji}>{mood}</Text>
+          <Text style={styles.moodText} numberOfLines={1}>
             {PEEP_STATUS_LABELS[profile.status]}
           </Text>
         </View>
       </View>
 
-      {/* Tail pointing down toward the head */}
       <View style={styles.tailWrap}>
-        <View style={[styles.tailBorder, { borderTopColor: statusColor }]} />
-        <View style={styles.tailFill} />
+        <View style={[styles.tail, { borderTopColor: theme.to }]} />
       </View>
 
       {showHead ? (
         <View
           style={[
             styles.head,
-            isLarge ? styles.headLg : styles.headMd,
-            { borderColor: statusColor },
+            isLarge && styles.headLg,
+            isSm && styles.headSm,
+            { borderColor: theme.from },
           ]}
         >
-          <Text
-            style={[styles.headInitial, isLarge ? styles.headInitialLg : styles.headInitialMd]}
-          >
-            {initial}
+          <Text style={[styles.headEmoji, isLarge && styles.headEmojiLg]}>
+            {avatar}
           </Text>
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -99,127 +132,123 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   balloon: {
-    backgroundColor: colors.bubbleFill,
-    borderWidth: 2,
-    borderRadius: 22,
-    alignItems: 'center',
+    minWidth: 150,
+    maxWidth: 210,
+    borderRadius: radii.bubble,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    gap: 4,
-    shadowColor: '#1C1E3C',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   balloonLg: {
-    minWidth: 168,
-    maxWidth: 220,
+    minWidth: 190,
+    maxWidth: 240,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md + 2,
   },
-  balloonMd: {
-    minWidth: 132,
-    maxWidth: 180,
+  balloonSm: {
+    minWidth: 120,
+    maxWidth: 150,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  sheen: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    width: 54,
+    height: 18,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  avatar: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  avatarLg: {
+    fontSize: 36,
+  },
+  avatarSm: {
+    fontSize: 22,
   },
   name: {
-    color: colors.textPrimary,
-    fontWeight: '700',
+    color: colors.textInverse,
+    fontWeight: '800',
+    fontSize: 16,
     textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: 1 },
   },
   nameLg: {
-    fontSize: 18,
+    fontSize: 20,
   },
-  nameMd: {
-    fontSize: 15,
+  nameSm: {
+    fontSize: 14,
   },
-  meta: {
-    color: colors.textMuted,
-    fontWeight: '500',
+  ageMeta: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
   },
-  metaLg: {
-    fontSize: 13,
-  },
-  metaMd: {
-    fontSize: 12,
-  },
-  statusRow: {
+  moodPill: {
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 6,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
     maxWidth: '100%',
   },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: radii.full,
+  moodEmoji: {
+    fontSize: 13,
   },
-  statusText: {
+  moodText: {
+    color: colors.textInverse,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   tailWrap: {
-    width: 20,
-    height: 12,
-    alignItems: 'center',
     marginTop: -1,
     zIndex: 1,
   },
-  tailBorder: {
+  tail: {
     width: 0,
     height: 0,
-    borderLeftWidth: 11,
-    borderRightWidth: 11,
-    borderTopWidth: 12,
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderTopWidth: 14,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    // borderTopColor set inline to status color
-  },
-  tailFill: {
-    position: 'absolute',
-    top: 0,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderTopWidth: 10,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: colors.bubbleFill,
   },
   head: {
     marginTop: spacing.sm,
-    backgroundColor: colors.headFill,
-    borderRadius: radii.full,
-    borderWidth: 2,
+    width: 48,
+    height: 48,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1C1E3C',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    ...shadows.soft,
   },
   headLg: {
-    width: 56,
-    height: 56,
+    width: 58,
+    height: 58,
   },
-  headMd: {
-    width: 42,
-    height: 42,
+  headSm: {
+    width: 36,
+    height: 36,
   },
-  headInitial: {
-    color: colors.purpleDeep,
-    fontWeight: '800',
-  },
-  headInitialLg: {
+  headEmoji: {
     fontSize: 22,
   },
-  headInitialMd: {
-    fontSize: 16,
+  headEmojiLg: {
+    fontSize: 26,
   },
 });

@@ -2,16 +2,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radii, spacing } from '../theme';
 import {
   PEEP_STATUSES,
+  PEEP_STATUS_EMOJI,
   PEEP_STATUS_LABELS,
   type PeepStatus,
 } from '../types/peep';
-
-const STATUS_COLORS: Record<PeepStatus, string> = {
-  available: colors.statusAvailable,
-  looking: colors.statusLooking,
-  busy: colors.statusBusy,
-  dnd: colors.statusDnd,
-};
 
 type Props = {
   value: PeepStatus;
@@ -23,20 +17,16 @@ export function StatusPicker({ value, onChange }: Props) {
     <View style={styles.list} accessibilityRole="radiogroup">
       {PEEP_STATUSES.map((status) => {
         const selected = value === status;
-        const accent = STATUS_COLORS[status];
         return (
           <Pressable
             key={status}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             onPress={() => onChange(status)}
-            style={[
-              styles.option,
-              selected && { borderColor: accent, backgroundColor: `${accent}18` },
-            ]}
+            style={[styles.option, selected && styles.optionSelected]}
           >
-            <View style={[styles.dot, { backgroundColor: accent }]} />
-            <Text style={[styles.label, selected && { color: colors.textPrimary }]}>
+            <Text style={styles.emoji}>{PEEP_STATUS_EMOJI[status]}</Text>
+            <Text style={[styles.label, selected && styles.labelSelected]}>
               {PEEP_STATUS_LABELS[status]}
             </Text>
           </Pressable>
@@ -56,19 +46,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    borderWidth: 1,
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
     borderColor: colors.surfaceBorder,
-    backgroundColor: colors.backgroundMuted,
+    backgroundColor: colors.surface,
   },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: radii.full,
+  optionSelected: {
+    borderColor: colors.electricPurple,
+    backgroundColor: colors.lavenderSoft,
+  },
+  emoji: {
+    fontSize: 20,
   },
   label: {
     color: colors.textSecondary,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  labelSelected: {
+    color: colors.textPrimary,
   },
 });
