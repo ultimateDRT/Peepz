@@ -1,90 +1,135 @@
 # Peepzi
 
-Mobile social presence app — **create your Peep**, preview your floating profile bubble, and control when you are discoverable.
+Mobile social presence app — **create your Peep**, preview your floating chat-bubble profile, control when you are discoverable, and see other family phones on the same Wi‑Fi via a small LAN presence server.
 
-**v0.1** targets **Expo SDK 57** (Expo Go compatible). Future releases will add Apple ARKit floating bubbles and Nearby Interaction; those native modules are stubbed under [`modules/`](./modules/) and are **not** required to run this version.
-
-Use Expo Go that matches SDK 57 (e.g. Expo Go `57.x` on the App Store). A newer Expo Go (SDK 58+) will report the project as incompatible until you upgrade this repo or install a matching Expo Go build.
+**v0.1** targets **Expo SDK 57** (Expo Go compatible). No Bluetooth / ARKit native modules yet.
 
 ## What’s in v0.1
 
-- Welcome screen with Peepzi branding and tagline
-- Create / edit Peep: name, age, status (`Available to chat` | `Just looking` | `Busy` | `Do not disturb`)
-- Profile persisted with AsyncStorage
-- Main screen: camera placeholder, Peep bubble preview, Edit Profile, Discoverable toggle (default **off**)
-- Light, clean UI with soft purple/blue accents
-- Peep shown as a **chat bubble** above a head (AR preview metaphor)
+- Welcome + create/edit Peep (name, age, status) — persisted with AsyncStorage
+- Persistent random **device UUID** (not hardware IDs)
+- Main screen: camera placeholder, Peep bubble, **Discoverable** toggle (default **off**), connection status
+- **Discover** screen: other discoverable users in your private test room (excludes you)
+- Light UI; Peep rendered as a **chat bubble** above a head
+- `/server` Socket.IO presence (in-memory only — **no profile persistence on the server**)
 
-## Run from Windows (Cursor)
+## Private family LAN test (3 iPhones) — Windows + Cursor
 
-You do **not** need a Mac to try v0.1. Use Expo Go on an iPhone on the same network (or a tunnel).
+You need **two terminals** in Cursor: one for the presence server, one for Expo.
 
-### 1. Prerequisites
+### 0. Same Wi‑Fi
 
-- [Node.js LTS](https://nodejs.org/) (18+)
-- Cursor (or any terminal) on Windows
-- iPhone with [Expo Go](https://apps.apple.com/app/expo-go/id982107779) installed
-- Phone and PC on the same Wi‑Fi (preferred), or use tunnel mode below
+Put the Windows PC and all three iPhones on the **same private Wi‑Fi** network.
 
-### 2. Install and start
+### 1. Find your PC LAN IP
 
-In Cursor’s terminal at the project root:
+In a Windows terminal:
 
-```bash
+```bat
+ipconfig
+```
+
+Use the **IPv4 Address** under your Wi‑Fi adapter (example: `192.168.1.42`).  
+**Do not** use `127.0.0.1` / `localhost` on the phones — that points at the phone itself.
+
+Optional: set the default in [`src/config/discovery.ts`](./src/config/discovery.ts) (`defaultServerHost`). You can also change the IP inside the app’s **Discover** screen.
+
+### 2. Terminal A — presence server
+
+```bat
+cd server
+npm install
+npm start
+```
+
+You should see something like:
+
+```text
+Peepzi presence listening on 0.0.0.0:3847
+Room code: PEEPZI-FAMILY-TEST
+→ http://192.168.1.42:3847
+```
+
+Leave this running.
+
+> The room code is for a **private family test only**. Keep it out of production plans.
+
+### 3. Windows Firewall (private network)
+
+Allow inbound TCP **3847** so phones can reach the PC:
+
+1. Windows Security → Firewall → Advanced settings → Inbound Rules → New Rule  
+2. Port → TCP → Specific local ports: `3847`  
+3. Allow the connection  
+4. Apply to **Private** profile (recommended for home Wi‑Fi)  
+5. Name it e.g. `Peepzi Presence 3847`
+
+Or from an **Admin** PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "Peepzi Presence 3847" -Direction Inbound -Protocol TCP -LocalPort 3847 -Action Allow -Profile Private
+```
+
+Quick check from another device on Wi‑Fi: open `http://YOUR_LAN_IP:3847` — you should get JSON `{"ok":true,...}`.
+
+### 4. Terminal B — Expo app
+
+From the repo root:
+
+```bat
 npm install
 npx expo start
 ```
 
-A QR code appears in the terminal (and in the browser Dev Tools page Expo opens).
+Scan the QR with Expo Go (SDK 57). If LAN Metro fails, use `npx expo start --tunnel` for the JS bundle — **presence still uses your LAN IP:3847**, not the Expo tunnel.
 
-### 3. Open on iPhone
+### 5. On each iPhone
 
-1. Open the **Camera** app (or Expo Go) and scan the QR code.
-2. Confirm it opens in **Expo Go**.
-3. Wait for the JS bundle to load — you should land on Welcome (or Main if a profile was already saved).
+1. Create / open your Peep (name, age, status).
+2. Open **Discover** → set **Presence server LAN IP** to the PC IP from step 1 → **Save & reconnect**.
+3. Confirm the status banner shows **Presence connected**.
+4. Toggle **Discoverable** **on** only when you want to appear.
+5. Other phones with Discoverable on should show up on **Discover** (not yourself).
+6. Toggle Discoverable **off** — you disappear from others immediately.
 
-### Same network issues?
+### Troubleshooting
 
-If the QR code fails to connect from Windows:
+| Symptom | Fix |
+|---------|-----|
+| Presence connection error | Firewall port 3847, correct LAN IP, same Wi‑Fi, server running |
+| Empty Discover list | Both sides Discoverable **on**, same room code, wait a few seconds / Refresh |
+| Expo QR won’t load | `npx expo start --tunnel` (Metro only); presence remains LAN |
+| Duplicate peers | Shouldn’t happen — server keys by device UUID and replaces sockets on reconnect |
 
-```bash
-npx expo start --tunnel
-```
+## Socket events
 
-Tunnel mode is slower but works across networks. First run may prompt to install `@expo/ngrok`.
+| Event | Direction | Role |
+|-------|-----------|------|
+| `presence:join` | client → server | Register / advertise (only listed if `discoverable`) |
+| `presence:update` | client → server | Profile or visibility change |
+| `presence:leave` | client → server | Leave / hide |
+| `presence:list` | both | Snapshot of discoverable peers (excludes self / hidden) |
+| `presence:heartbeat` | client → server | Keepalive; server expires quiet devices |
+| `presence:error` | server → client | Validation / availability errors |
 
-### Useful scripts
-
-| Command | Purpose |
-|---------|---------|
-| `npx expo start` | Dev server + QR for Expo Go |
-| `npx expo start --tunnel` | Dev server via tunnel |
-| `npx tsc --noEmit` | Typecheck |
-
-### Resetting your local Peep
-
-Clear Expo Go’s data for Peepzi, or add a temporary call to `clearProfile()` from `src/storage/profileStorage.ts` during development.
+Server validates name length, age range, status enum, room code, and UUID. Hidden profiles cannot be fetched.
 
 ## Project layout
 
 ```
-App.tsx                 # Entry — profile provider + navigator
+App.tsx
+server/                 # Socket.IO presence (LAN family test)
 src/
-  components/           # UI primitives (logo, bubble, forms, buttons)
-  context/              # Profile React context
-  navigation/           # React Navigation stack
-  screens/              # Welcome, CreatePeep, Main
-  storage/              # AsyncStorage helpers
-  theme/                # Dark purple/blue theme tokens
-  types/                # Peep profile types
-modules/
-  arkit/                # Future ARKit stub (Expo Go safe)
-  nearby-interaction/   # Future NI stub (Expo Go safe)
+  config/discovery.ts   # LAN host defaults + private room code
+  presence/             # Socket.IO client + React context
+  screens/              # Welcome, CreatePeep, Main, Discover
+  storage/              # profile, deviceId, serverHost
+  ...
 ```
 
 ## Native roadmap (not in Expo Go)
 
-See [`modules/README.md`](./modules/README.md). Custom iOS builds will replace the camera placeholder and wire the Discoverable toggle to real Nearby Interaction.
+See [`modules/README.md`](./modules/README.md).
 
 ## License
 

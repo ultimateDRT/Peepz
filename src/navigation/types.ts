@@ -5,6 +5,7 @@ export type RootStackParamList = {
   Welcome: undefined;
   CreatePeep: { mode: 'create' | 'edit' };
   Main: undefined;
+  Discover: undefined;
 };
 
 export type WelcomeScreenProps = NativeStackScreenProps<
@@ -16,6 +17,10 @@ export type CreatePeepScreenProps = NativeStackScreenProps<
   'CreatePeep'
 >;
 export type MainScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
+export type DiscoverScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'Discover'
+>;
 
 export type ProfileContextValue = {
   profile: PeepProfile | null;

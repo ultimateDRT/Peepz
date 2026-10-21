@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useProfile } from '../context/ProfileContext';
 import { CreatePeepScreen } from '../screens/CreatePeepScreen';
+import { DiscoverScreen } from '../screens/DiscoverScreen';
 import { MainScreen } from '../screens/MainScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { colors } from '../theme';
@@ -54,6 +55,11 @@ export function RootNavigator() {
           }}
         />
         <Stack.Screen name="Main" component={MainScreen} />
+        <Stack.Screen
+          name="Discover"
+          component={DiscoverScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -7,15 +7,18 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ConnectionStatusBanner } from '../components/ConnectionStatusBanner';
 import { LinearGradientFallback } from '../components/LinearGradientFallback';
 import { PeepBubble } from '../components/PeepBubble';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useProfile } from '../context/ProfileContext';
 import type { MainScreenProps } from '../navigation/types';
+import { usePresence } from '../presence/PresenceContext';
 import { colors, radii, spacing, typography } from '../theme';
 
 export function MainScreen({ navigation }: MainScreenProps) {
   const { profile, upsertProfile } = useProfile();
+  const { peers } = usePresence();
   const [toggling, setToggling] = useState(false);
 
   if (!profile) {
@@ -26,14 +29,20 @@ export function MainScreen({ navigation }: MainScreenProps) {
           <Text style={styles.loadingText}>Loading your Peep…</Text>
           <PrimaryButton
             label="Create Your Peep"
-            onPress={() => navigation.reset({
-              index: 0,
-              routes: [
-                { name: 'Welcome' },
-                { name: 'CreatePeep', params: { mode: 'create' } },
-              ],
-            })}
-            style={{ marginTop: spacing.lg, alignSelf: 'stretch', marginHorizontal: spacing.lg }}
+            onPress={() =>
+              navigation.reset({
+                index: 0,
+                routes: [
+                  { name: 'Welcome' },
+                  { name: 'CreatePeep', params: { mode: 'create' } },
+                ],
+              })
+            }
+            style={{
+              marginTop: spacing.lg,
+              alignSelf: 'stretch',
+              marginHorizontal: spacing.lg,
+            }}
           />
         </SafeAreaView>
       </LinearGradientFallback>
@@ -61,6 +70,8 @@ export function MainScreen({ navigation }: MainScreenProps) {
           <Text style={styles.headerSub}>Your world, nearby</Text>
         </View>
 
+        <ConnectionStatusBanner />
+
         <View style={styles.camera}>
           <View style={styles.cameraFrame}>
             <Text style={styles.cameraLabel}>Camera</Text>
@@ -80,8 +91,8 @@ export function MainScreen({ navigation }: MainScreenProps) {
               <Text style={styles.toggleTitle}>Discoverable</Text>
               <Text style={styles.toggleSub}>
                 {profile.discoverable
-                  ? 'Nearby peers can see your Peep bubble.'
-                  : 'You are hidden. Toggle on when you want to be seen.'}
+                  ? 'Family peers in your private room can see you.'
+                  : 'You are hidden. Toggle on only when you want to be seen.'}
               </Text>
             </View>
             {toggling ? (
@@ -102,6 +113,10 @@ export function MainScreen({ navigation }: MainScreenProps) {
           </View>
 
           <PrimaryButton
+            label={`Discover${peers.length ? ` (${peers.length})` : ''}`}
+            onPress={() => navigation.navigate('Discover')}
+          />
+          <PrimaryButton
             label="Edit Profile"
             variant="secondary"
             onPress={() => navigation.navigate('CreatePeep', { mode: 'edit' })}
@@ -116,6 +131,7 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
   centered: {
     flex: 1,
@@ -128,7 +144,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.xs,
   },
   brand: {
     fontSize: 28,
@@ -142,7 +158,7 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 240,
   },
   cameraFrame: {
     flex: 1,
@@ -154,7 +170,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   cameraLabel: {
-    color: colors.blueSoft,
+    color: colors.blue,
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 1.2,
@@ -173,7 +189,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     gap: spacing.md,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
   },
   toggleRow: {
     flexDirection: 'row',
