@@ -6,11 +6,14 @@ Mobile social presence app — **create your Peep**, preview your floating chat-
 
 ## What’s in v0.1
 
-- Welcome + create/edit Peep (name, age, status) — persisted with AsyncStorage
-- Persistent random **device UUID** (not hardware IDs)
-- Main screen: camera placeholder, Peep bubble, **Discoverable** toggle (default **off**), connection status
-- **Discover** screen: other discoverable users in your private test room (excludes you)
-- Light UI; Peep rendered as a **chat bubble** above a head
+- Gen‑Z visual redesign (electric purple / cyan / lime / coral) with tab navigation
+- Welcome + create/edit Peep (nickname, age, mood, emoji avatar, bubble theme)
+- Cosmetic badges only (no popularity rankings); age private by default
+- Home: animated Peep bubble, **Discoverable** (default **off**), AR Camera + Discover shortcuts
+- Discover: connected Wi‑Fi test peers as bubble cards (distinct from future “nearby AR”)
+- Camera: polished ARKit-ready placeholder (Expo Go safe)
+- Settings: visibility, safety/blocking, reduce-motion accessibility
+- Persistent random **device UUID** + AsyncStorage profile
 - `/server` Socket.IO presence (in-memory only — **no profile persistence on the server**)
 
 ## Private family LAN test (3 iPhones) — Windows + Cursor
@@ -120,11 +123,13 @@ Server validates name length, age range, status enum, room code, and UUID. Hidde
 App.tsx
 server/                 # Socket.IO presence (LAN family test)
 src/
+  theme/                # Design tokens (colours, radii, type, shadows)
+  components/           # Screen, PillButton, PeepBubble, Card, …
   config/discovery.ts   # LAN host defaults + private room code
   presence/             # Socket.IO client + React context
-  screens/              # Welcome, CreatePeep, Main, Discover
+  screens/              # Welcome, CreatePeep, Home, Discover, Camera, Profile, Settings
+  navigation/           # Root stack + bottom tabs
   storage/              # profile, deviceId, serverHost
-  ...
 ```
 
 ## Native roadmap (not in Expo Go)

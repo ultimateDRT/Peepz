@@ -8,6 +8,7 @@ export default function App() {
     <ProfileProvider>
       <PresenceProvider>
         <StatusBar style="dark" />
+        {/* Gen‑Z light gradient UI; presence + profile providers unchanged */}
         <RootNavigator />
       </PresenceProvider>
     </ProfileProvider>
