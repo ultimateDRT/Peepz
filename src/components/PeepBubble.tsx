@@ -18,36 +18,92 @@ type Props = {
   size?: 'md' | 'lg';
 };
 
+/**
+ * Circular floating Peep bubble — the AR-style social orb preview.
+ * Circle holds identity; status caption sits under the orb.
+ */
 export function PeepBubble({ profile, size = 'lg' }: Props) {
   const isLarge = size === 'lg';
   const statusColor = STATUS_COLORS[profile.status];
   const initial = profile.name.trim().charAt(0).toUpperCase() || '?';
+  const diameter = isLarge ? 168 : 120;
 
   return (
     <View
-      style={[styles.wrap, isLarge ? styles.wrapLg : styles.wrapMd]}
+      style={styles.wrap}
       accessibilityLabel={`${profile.name}, age ${profile.age}, ${PEEP_STATUS_LABELS[profile.status]}`}
     >
-      <View style={[styles.glow, { shadowColor: statusColor }]} />
-      <View style={[styles.bubble, isLarge ? styles.bubbleLg : styles.bubbleMd]}>
-        <View style={[styles.avatar, isLarge ? styles.avatarLg : styles.avatarMd]}>
-          <Text style={[styles.initial, isLarge ? styles.initialLg : styles.initialMd]}>
+      {/* Soft glow behind the circle */}
+      <View
+        style={[
+          styles.glow,
+          {
+            width: diameter + 24,
+            height: diameter + 24,
+            borderRadius: (diameter + 24) / 2,
+            shadowColor: statusColor,
+            backgroundColor: `${statusColor}18`,
+          },
+        ]}
+      />
+
+      {/* Outer status ring */}
+      <View
+        style={[
+          styles.ring,
+          {
+            width: diameter + 10,
+            height: diameter + 10,
+            borderRadius: (diameter + 10) / 2,
+            borderColor: statusColor,
+          },
+        ]}
+      >
+        {/* Inner circular bubble */}
+        <View
+          style={[
+            styles.bubble,
+            {
+              width: diameter,
+              height: diameter,
+              borderRadius: diameter / 2,
+            },
+          ]}
+        >
+          <View style={styles.fillPurple} />
+          <View style={styles.fillBlue} />
+          <View
+            style={[
+              styles.highlight,
+              isLarge ? styles.highlightLg : styles.highlightMd,
+            ]}
+          />
+          <Text
+            style={[styles.initial, isLarge ? styles.initialLg : styles.initialMd]}
+          >
             {initial}
           </Text>
-        </View>
-        <Text
-          style={[styles.name, isLarge ? styles.nameLg : styles.nameMd]}
-          numberOfLines={1}
-        >
-          {profile.name}
-        </Text>
-        <Text style={styles.meta}>{profile.age}</Text>
-        <View style={[styles.pill, { backgroundColor: `${statusColor}22` }]}>
-          <View style={[styles.dot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.pillText, { color: statusColor }]} numberOfLines={1}>
-            {PEEP_STATUS_LABELS[profile.status]}
+          <Text
+            style={[styles.name, isLarge ? styles.nameLg : styles.nameMd]}
+            numberOfLines={1}
+          >
+            {profile.name}
+          </Text>
+          <Text style={[styles.age, isLarge ? styles.ageLg : styles.ageMd]}>
+            {profile.age}
           </Text>
         </View>
+      </View>
+
+      {/* Status under the bubble */}
+      <View style={[styles.caption, { backgroundColor: `${statusColor}22` }]}>
+        <View style={[styles.dot, { backgroundColor: statusColor }]} />
+        <Text
+          style={[styles.captionText, { color: statusColor }]}
+          numberOfLines={1}
+        >
+          {PEEP_STATUS_LABELS[profile.status]}
+        </Text>
       </View>
     </View>
   );
@@ -57,100 +113,120 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  wrapLg: {
-    width: 220,
-    height: 220,
-  },
-  wrapMd: {
-    width: 160,
-    height: 160,
+    gap: spacing.md,
   },
   glow: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: radii.full,
-    shadowOpacity: 0.55,
-    shadowRadius: 28,
+    top: -6,
+    shadowOpacity: 0.65,
+    shadowRadius: 32,
     shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
   },
-  bubble: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
-    borderRadius: radii.xl,
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.xs,
-  },
-  bubbleLg: {
-    minWidth: 180,
-  },
-  bubbleMd: {
-    minWidth: 140,
-  },
-  avatar: {
-    backgroundColor: colors.purpleDeep,
-    borderRadius: radii.full,
+  ring: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 3,
+    backgroundColor: 'transparent',
+  },
+  bubble: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundElevated,
     borderWidth: 2,
-    borderColor: colors.blueSoft,
-    marginBottom: spacing.xs,
+    borderColor: colors.purpleSoft,
+    overflow: 'hidden',
+    shadowColor: colors.purple,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  avatarLg: {
-    width: 56,
-    height: 56,
+  fillPurple: {
+    position: 'absolute',
+    top: '-20%',
+    left: '-15%',
+    width: '70%',
+    height: '70%',
+    borderRadius: 999,
+    backgroundColor: colors.purpleDeep,
+    opacity: 0.45,
   },
-  avatarMd: {
-    width: 40,
-    height: 40,
+  fillBlue: {
+    position: 'absolute',
+    bottom: '-25%',
+    right: '-20%',
+    width: '75%',
+    height: '75%',
+    borderRadius: 999,
+    backgroundColor: colors.blueDeep,
+    opacity: 0.4,
+  },
+  highlight: {
+    position: 'absolute',
+    top: '12%',
+    left: '18%',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radii.full,
+  },
+  highlightLg: {
+    width: 48,
+    height: 22,
+  },
+  highlightMd: {
+    width: 34,
+    height: 16,
   },
   initial: {
-    color: colors.textPrimary,
-    fontWeight: '700',
+    color: colors.purpleSoft,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   initialLg: {
-    fontSize: 24,
+    fontSize: 36,
   },
   initialMd: {
-    fontSize: 18,
+    fontSize: 26,
   },
   name: {
     color: colors.textPrimary,
     fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    maxWidth: '85%',
   },
   nameLg: {
-    fontSize: 18,
+    fontSize: 16,
   },
   nameMd: {
-    fontSize: 15,
-  },
-  meta: {
-    color: colors.textMuted,
     fontSize: 13,
-    fontWeight: '500',
   },
-  pill: {
+  age: {
+    color: colors.textMuted,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  ageLg: {
+    fontSize: 13,
+  },
+  ageMd: {
+    fontSize: 11,
+  },
+  caption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: radii.full,
-    marginTop: spacing.xs,
-    maxWidth: '100%',
+    maxWidth: 220,
   },
   dot: {
     width: 7,
     height: 7,
     borderRadius: radii.full,
   },
-  pillText: {
+  captionText: {
     fontSize: 12,
     fontWeight: '600',
   },
