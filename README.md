@@ -2,7 +2,9 @@
 
 Mobile social presence app — **create your Peep**, preview your floating profile bubble, and control when you are discoverable.
 
-**v0.1** is Expo Go compatible (React Native + TypeScript). Future releases will add Apple ARKit floating bubbles and Nearby Interaction; those native modules are stubbed under [`modules/`](./modules/) and are **not** required to run this version.
+**v0.1** targets **Expo SDK 57** (Expo Go compatible). Future releases will add Apple ARKit floating bubbles and Nearby Interaction; those native modules are stubbed under [`modules/`](./modules/) and are **not** required to run this version.
+
+Use Expo Go that matches SDK 57 (e.g. Expo Go `57.x` on the App Store). A newer Expo Go (SDK 58+) will report the project as incompatible until you upgrade this repo or install a matching Expo Go build.
 
 ## What’s in v0.1
 
