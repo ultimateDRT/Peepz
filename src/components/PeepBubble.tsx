@@ -34,6 +34,10 @@ type Props = {
   float?: boolean;
 };
 
+/**
+ * Chat/speech bubble floating above a head — nickname + mood in the balloon,
+ * emoji avatar on the head underneath (not an orb or flat card).
+ */
 export function PeepBubble({
   profile,
   size = 'lg',
@@ -67,6 +71,10 @@ export function PeepBubble({
 
   const avatar = profile.avatarEmoji || '😎';
   const mood = PEEP_STATUS_EMOJI[profile.status];
+  const showAge =
+    !profile.hideAge &&
+    typeof profile.age === 'number' &&
+    Number.isFinite(profile.age);
 
   return (
     <Animated.View
@@ -88,15 +96,15 @@ export function PeepBubble({
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.sheen} />
-        <Text style={[styles.avatar, isLarge && styles.avatarLg, isSm && styles.avatarSm]}>
-          {avatar}
-        </Text>
         <Text
           style={[styles.name, isLarge && styles.nameLg, isSm && styles.nameSm]}
           numberOfLines={1}
         >
           {profile.name}
         </Text>
+        {showAge ? (
+          <Text style={styles.ageMeta}>{profile.age}</Text>
+        ) : null}
         <View style={styles.moodPill}>
           <Text style={styles.moodEmoji}>{mood}</Text>
           <Text style={styles.moodText} numberOfLines={1}>
@@ -115,7 +123,7 @@ export function PeepBubble({
             styles.head,
             isLarge && styles.headLg,
             isSm && styles.headSm,
-            { borderColor: theme.from },
+            { borderColor: theme.from, backgroundColor: colors.lavenderSoft },
           ]}
         >
           <Text style={[styles.headEmoji, isLarge && styles.headEmojiLg]}>
@@ -163,16 +171,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.28)',
   },
-  avatar: {
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  avatarLg: {
-    fontSize: 36,
-  },
-  avatarSm: {
-    fontSize: 22,
-  },
   name: {
     color: colors.textInverse,
     fontWeight: '800',
@@ -183,7 +181,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
   },
   nameLg: {
-    fontSize: 20,
+    fontSize: 22,
   },
   nameSm: {
     fontSize: 14,
@@ -249,6 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   headEmojiLg: {
-    fontSize: 26,
+    fontSize: 28,
   },
 });

@@ -1,5 +1,10 @@
-import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import {
+  DefaultTheme,
+  NavigationContainer,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useProfile } from '../context/ProfileContext';
 import { CreatePeepScreen } from '../screens/CreatePeepScreen';
@@ -24,6 +29,23 @@ const navTheme = {
 
 export function RootNavigator() {
   const { profile, bootstrapping } = useProfile();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const hadProfile = useRef(Boolean(profile));
+
+  useEffect(() => {
+    if (bootstrapping || !navigationRef.isReady()) return;
+
+    // Settings → Reset clears storage; leave MainTabs and return to Welcome.
+    if (!profile && hadProfile.current) {
+      hadProfile.current = false;
+      navigationRef.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+      return;
+    }
+
+    if (profile) {
+      hadProfile.current = true;
+    }
+  }, [profile, bootstrapping, navigationRef]);
 
   if (bootstrapping) {
     return (
@@ -34,7 +56,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       <Stack.Navigator
         initialRouteName={profile ? 'MainTabs' : 'Welcome'}
         screenOptions={{

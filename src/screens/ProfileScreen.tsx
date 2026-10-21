@@ -5,8 +5,12 @@ import { PillButton } from '../components/PillButton';
 import { Screen } from '../components/Screen';
 import { useProfile } from '../context/ProfileContext';
 import type { ProfileScreenProps } from '../navigation/types';
-import { colors, radii, spacing, typography } from '../theme';
-import { COSMETIC_BADGES } from '../types/peep';
+import { colors, getBubbleTheme, radii, spacing, typography } from '../theme';
+import {
+  COSMETIC_BADGES,
+  PEEP_STATUS_EMOJI,
+  PEEP_STATUS_LABELS,
+} from '../types/peep';
 
 export function ProfileScreen({ navigation }: ProfileScreenProps) {
   const { profile } = useProfile();
@@ -42,8 +46,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
           label="Age"
           value={profile.agePrivate ? `${profile.age} · private 🔒` : String(profile.age)}
         />
-        <Row label="Mood" value={`${profile.avatarEmoji}  · see status`} />
-        <Row label="Bubble theme" value={String(profile.bubbleThemeId)} />
+        <Row
+          label="Mood"
+          value={`${PEEP_STATUS_EMOJI[profile.status]} ${PEEP_STATUS_LABELS[profile.status]}`}
+        />
+        <Row
+          label="Avatar"
+          value={profile.avatarEmoji}
+        />
+        <Row
+          label="Bubble theme"
+          value={getBubbleTheme(profile.bubbleThemeId).label}
+        />
       </Card>
 
       <Text style={styles.section}>Cosmetic badges</Text>

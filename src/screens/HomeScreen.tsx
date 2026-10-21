@@ -15,6 +15,7 @@ import { useProfile } from '../context/ProfileContext';
 import type { HomeScreenProps } from '../navigation/types';
 import { usePresence } from '../presence/PresenceContext';
 import { colors, radii, spacing, typography } from '../theme';
+import { COSMETIC_BADGES } from '../types/peep';
 
 export function HomeScreen({ navigation }: HomeScreenProps) {
   const { profile, upsertProfile } = useProfile();
@@ -69,6 +70,19 @@ export function HomeScreen({ navigation }: HomeScreenProps) {
       <View style={styles.stage}>
         <PeepBubble profile={{ ...profile, hideAge: true }} size="lg" float />
       </View>
+
+      {profile.badges.length > 0 ? (
+        <View style={styles.badgeStrip}>
+          {COSMETIC_BADGES.filter((b) => profile.badges.includes(b.id)).map(
+            (badge) => (
+              <View key={badge.id} style={styles.badgeChip}>
+                <Text style={styles.badgeChipEmoji}>{badge.emoji}</Text>
+                <Text style={styles.badgeChipLabel}>{badge.label}</Text>
+              </View>
+            ),
+          )}
+        </View>
+      ) : null}
 
       <View style={styles.toggleCard}>
         <View style={styles.toggleCopy}>
@@ -151,7 +165,31 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 260,
+    minHeight: 220,
+  },
+  badgeStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  badgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.electricPurple,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  badgeChipEmoji: { fontSize: 14 },
+  badgeChipLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.electricPurpleDeep,
   },
   toggleCard: {
     flexDirection: 'row',

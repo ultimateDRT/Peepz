@@ -15,7 +15,7 @@ import { useProfile } from '../context/ProfileContext';
 import type { SettingsScreenProps } from '../navigation/types';
 import { usePresence } from '../presence/PresenceContext';
 import { clearProfile } from '../storage/profileStorage';
-import { colors, radii, spacing, typography } from '../theme';
+import { colors, spacing, typography } from '../theme';
 
 export function SettingsScreen(_props: SettingsScreenProps) {
   const { profile, upsertProfile, refreshProfile } = useProfile();
