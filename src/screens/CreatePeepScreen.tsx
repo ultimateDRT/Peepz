@@ -10,11 +10,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormField } from '../components/FormField';
 import { LinearGradientFallback } from '../components/LinearGradientFallback';
+import { PeepBubble } from '../components/PeepBubble';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { StatusPicker } from '../components/StatusPicker';
 import { useProfile } from '../context/ProfileContext';
 import type { CreatePeepScreenProps } from '../navigation/types';
-import { colors, spacing, typography } from '../theme';
+import { colors, radii, spacing, typography } from '../theme';
 import type { PeepStatus } from '../types/peep';
 
 export function CreatePeepScreen({ navigation, route }: CreatePeepScreenProps) {
@@ -45,6 +46,13 @@ export function CreatePeepScreen({ navigation, route }: CreatePeepScreenProps) {
   }, [ageText]);
 
   const canSave = !nameError && !ageError && !saving;
+
+  const previewAge = Number(ageText);
+  const previewProfile = {
+    name: name.trim() || 'Your Peep',
+    age: Number.isInteger(previewAge) && previewAge > 0 ? previewAge : 0,
+    status,
+  };
 
   const onSave = async () => {
     if (nameError || ageError) return;
@@ -86,9 +94,14 @@ export function CreatePeepScreen({ navigation, route }: CreatePeepScreenProps) {
             </Text>
             <Text style={styles.sub}>
               {isEdit
-                ? 'Update how nearby people will see you.'
-                : 'This is your floating social bubble. You can change it anytime.'}
+                ? 'Update the chat bubble people will see above you.'
+                : 'This chat bubble floats above your head. Fill it in — preview updates live.'}
             </Text>
+
+            <View style={styles.preview}>
+              <Text style={styles.previewLabel}>Preview</Text>
+              <PeepBubble profile={previewProfile} size="md" />
+            </View>
 
             <View style={styles.form}>
               <FormField
@@ -155,6 +168,24 @@ const styles = StyleSheet.create({
   sub: {
     ...typography.body,
     marginBottom: spacing.sm,
+  },
+  preview: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  previewLabel: {
+    alignSelf: 'flex-start',
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   form: {
     gap: spacing.lg,

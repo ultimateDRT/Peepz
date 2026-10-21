@@ -65,8 +65,8 @@ export function MainScreen({ navigation }: MainScreenProps) {
           <View style={styles.cameraFrame}>
             <Text style={styles.cameraLabel}>Camera</Text>
             <Text style={styles.cameraHint}>
-              Live AR view arrives with Apple ARKit in a later release. This
-              placeholder stands in for Expo Go.
+              Your Peep floats above you like a chat bubble. Live AR arrives
+              later — this is the Expo Go preview.
             </Text>
             <View style={styles.bubbleStage}>
               <PeepBubble profile={profile} size="lg" />
@@ -94,7 +94,7 @@ export function MainScreen({ navigation }: MainScreenProps) {
                   false: colors.surfaceBorder,
                   true: colors.purple,
                 }}
-                thumbColor={colors.textPrimary}
+                thumbColor={colors.backgroundElevated}
                 ios_backgroundColor={colors.surfaceBorder}
                 accessibilityLabel="Discoverable"
               />

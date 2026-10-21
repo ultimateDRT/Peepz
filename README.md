@@ -12,7 +12,8 @@ Use Expo Go that matches SDK 57 (e.g. Expo Go `57.x` on the App Store). A newer 
 - Create / edit Peep: name, age, status (`Available to chat` | `Just looking` | `Busy` | `Do not disturb`)
 - Profile persisted with AsyncStorage
 - Main screen: camera placeholder, Peep bubble preview, Edit Profile, Discoverable toggle (default **off**)
-- Dark theme with purple and blue accents
+- Light, clean UI with soft purple/blue accents
+- Peep shown as a **chat bubble** above a head (AR preview metaphor)
 
 ## Run from Windows (Cursor)
 

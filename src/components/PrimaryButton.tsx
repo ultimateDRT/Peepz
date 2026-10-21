@@ -43,11 +43,14 @@ export function PrimaryButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.textPrimary} />
+        <ActivityIndicator
+          color={variant === 'primary' ? colors.textInverse : colors.purple}
+        />
       ) : (
         <Text
           style={[
             styles.label,
+            variant === 'primary' && styles.labelPrimary,
             variant === 'secondary' && styles.labelSecondary,
             variant === 'ghost' && styles.labelGhost,
           ]}
@@ -85,14 +88,16 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
+  },
+  labelPrimary: {
+    color: colors.textInverse,
   },
   labelSecondary: {
     color: colors.textPrimary,
   },
   labelGhost: {
-    color: colors.blueSoft,
+    color: colors.purple,
   },
 });

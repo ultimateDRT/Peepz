@@ -2,8 +2,7 @@ import { StyleSheet, View, type ViewProps } from 'react-native';
 import { colors } from '../theme';
 
 /**
- * Soft dark purple→blue atmosphere without expo-linear-gradient
- * (keeps the dependency surface minimal for Expo Go).
+ * Soft light atmosphere — faint purple/blue wash on a clean background.
  */
 export function LinearGradientFallback({ style, children, ...rest }: ViewProps) {
   return (
@@ -23,22 +22,22 @@ const styles = StyleSheet.create({
   },
   blobPurple: {
     position: 'absolute',
-    top: -80,
-    left: -60,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: colors.purpleDeep,
-    opacity: 0.28,
-  },
-  blobBlue: {
-    position: 'absolute',
-    bottom: -40,
-    right: -50,
+    top: -100,
+    left: -40,
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: colors.blueDeep,
-    opacity: 0.22,
+    backgroundColor: colors.purpleSoft,
+    opacity: 0.12,
+  },
+  blobBlue: {
+    position: 'absolute',
+    bottom: -60,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: colors.blueSoft,
+    opacity: 0.1,
   },
 });
