@@ -53,6 +53,12 @@ struct CameraHomeView: View {
             }
         }
         .onAppear {
+            switch ScreenshotMode.screen {
+            case "camera-edit": editingBubble = true
+            case "camera-visibility": choosingVisibility = true
+            case "camera-peep": selectedPeep = SimulatedCrowd.peeps.first
+            default: break
+            }
             cameraDenied = AVCaptureDevice.authorizationStatus(for: .video) == .denied
             if !arSupported { nearby.start() }
         }

@@ -18,6 +18,7 @@ struct OnboardingFlow: View {
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: step)
         .onAppear {
+            if let start = ScreenshotMode.onboardingStep { step = start }
             draftBubble = app.bubble
             draftVisibility = app.visibility
         }

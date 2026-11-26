@@ -2,7 +2,11 @@ import SwiftUI
 
 @main
 struct PeepzApp: App {
-    @State private var app = AppState()
+    @State private var app: AppState = {
+        let state = AppState()
+        ScreenshotMode.prepare(state)
+        return state
+    }()
     @State private var nearby = NearbyService()
 
     var body: some Scene {
