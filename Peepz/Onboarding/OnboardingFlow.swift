@@ -28,8 +28,7 @@ struct OnboardingFlow: View {
     private var welcome: some View {
         VStack(spacing: 18) {
             Spacer()
-            LogoIcon(size: 132)
-            Wordmark(size: 56)
+            FullLogo(width: 230)
             Text("See what people around you are up to.\nPoint your camera. Say hi.")
                 .font(Theme.font(18, .medium))
                 .foregroundStyle(Theme.ink.opacity(0.7))

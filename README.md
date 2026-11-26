@@ -59,3 +59,4 @@ open Peepz.xcodeproj
 - Moderation backend for reports. The text filter is a placeholder.
 - Age checks (18+ advised if dating is a use case).
 - Tune bubble height above heads on real devices.
+- App icon is cut from the preferred logo PDF (a JPEG). Swap in a vector export for a crisper icon.

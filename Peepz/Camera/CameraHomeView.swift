@@ -104,7 +104,7 @@ struct CameraHomeView: View {
 
     private var topBar: some View {
         HStack(alignment: .center) {
-            Wordmark(size: 30)
+            Wordmark(size: 28)
             Spacer()
             HStack(spacing: 6) {
                 Image(systemName: "person.2.fill").font(.system(size: 13, weight: .bold))

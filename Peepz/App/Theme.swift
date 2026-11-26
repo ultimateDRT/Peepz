@@ -22,7 +22,12 @@ enum Theme {
         return .custom(name, size: size)
     }
 
-    /// Fredoka for the playful wordmark and big headings.
+    /// Titan One, the chunky "PeepZ" wordmark font.
+    static func wordmark(_ size: CGFloat) -> Font {
+        .custom("TitanOne", size: size)
+    }
+
+    /// Fredoka for big playful headings.
     static func display(_ size: CGFloat) -> Font {
         .custom("Fredoka-Bold", size: size)
     }
