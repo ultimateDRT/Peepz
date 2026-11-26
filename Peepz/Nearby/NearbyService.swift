@@ -75,7 +75,8 @@ final class NearbyService: NSObject {
     // MARK: - Start / stop
 
     func start() {
-        guard !running else { return }
+        // Screenshot runs on the cloud Mac skip networking so no permission pop-ups appear.
+        guard !running, !ScreenshotMode.isActive else { return }
         running = true
         let browser = MCNearbyServiceBrowser(peer: myPeerID, serviceType: Self.serviceType)
         browser.delegate = self
