@@ -38,7 +38,7 @@ There is no Xcode project checked in. `project.yml` describes it, and [XcodeGen]
 ### Getting it on your iPhone with TestFlight
 
 1. Join the Apple Developer Program at developer.apple.com/programs ($99 a year, approval usually takes a day or two).
-2. In App Store Connect, create a new app called Peepz with bundle ID `com.peepz.app`.
+2. In App Store Connect, create a new app called Peepz with bundle ID `com.ultimatedrt.peepz`.
 3. In App Store Connect > Users and Access > Integrations, create an API key with Admin access and download the `.p8` file.
 4. In this repo on GitHub: Settings > Secrets and variables > Actions, add `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`.
 5. Actions tab > TestFlight > Run workflow.

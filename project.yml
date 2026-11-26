@@ -4,7 +4,7 @@
 #   brew install xcodegen && xcodegen generate
 name: Peepz
 options:
-  bundleIdPrefix: com.peepz
+  bundleIdPrefix: com.ultimatedrt
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -22,7 +22,7 @@ targets:
     settings:
       base:
         # GUESS: bundle ID must be unique on the App Store. Change it before the first TestFlight upload if taken.
-        PRODUCT_BUNDLE_IDENTIFIER: com.peepz.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.ultimatedrt.peepz
         PRODUCT_NAME: Peepz
         INFOPLIST_FILE: Peepz/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
