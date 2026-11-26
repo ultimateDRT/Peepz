@@ -1,0 +1,72 @@
+# Runs Peepz in the iOS Simulator on a cloud Mac and saves a screenshot of each screen
+# to the `screenshots` branch. Run it by hand from the Actions tab.
+name: Screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [screenshots-workflow]
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
+
+      - name: Generate Xcode project
+        run: brew install xcodegen && xcodegen generate
+
+      - name: Create and boot an iPhone simulator
+        run: |
+          RUNTIME=$(xcrun simctl list runtimes available -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x['platform']=='iOS']; print(r[-1]['identifier'])")
+          TYPE=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,re; t=[x for x in json.load(sys.stdin)['devicetypes'] if re.fullmatch(r'iPhone \d+ Pro', x['name'])]; print(t[-1]['identifier'])")
+          echo "Using $TYPE on $RUNTIME"
+          UDID=$(xcrun simctl create PeepzShot "$TYPE" "$RUNTIME")
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project Peepz.xcodeproj -scheme Peepz -configuration Debug \
+            -destination "id=$UDID" -derivedDataPath build CODE_SIGNING_ALLOWED=NO build \
+            | grep -E "error:|BUILD" || true
+          test -d build/Build/Products/Debug-iphonesimulator/Peepz.app
+
+      - name: Take screenshots
+        run: |
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Peepz.app
+          mkdir -p shots
+          n=1
+          for screen in welcome bubble visibility camera camera-edit camera-visibility camera-peep; do
+            xcrun simctl terminate "$UDID" com.ultimatedrt.peepz 2>/dev/null || true
+            xcrun simctl launch "$UDID" com.ultimatedrt.peepz -uiScreen "$screen"
+            sleep 6
+            xcrun simctl io "$UDID" screenshot "shots/0${n}-${screen}.png"
+            n=$((n+1))
+          done
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots
+
+      - name: Save to the screenshots branch
+        run: |
+          cd shots
+          git init -q -b screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Screenshots from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" screenshots
