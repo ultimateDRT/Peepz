@@ -241,11 +241,11 @@ final class NearbyService: NSObject {
             let session = niSession(for: peer)
             let isFirstRun = niConfigs[peer] == nil
             if arAssisted.contains(peer), let arSession {
+                // Apple: set the flag before setARSession, and link the AR session before the first run().
+                config.isCameraAssistanceEnabled = true
                 if isFirstRun {
-                    // Must happen before the session's first run(). One shared AR session for every person.
                     session.setARSession(arSession)
                 }
-                config.isCameraAssistanceEnabled = true
             }
             niConfigs[peer] = config
             session.run(config)

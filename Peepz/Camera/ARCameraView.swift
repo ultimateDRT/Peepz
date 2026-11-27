@@ -56,6 +56,8 @@ struct ARCameraView: UIViewRepresentable {
         config.initialWorldMap = nil
         view.session.run(config)
 
+        // Nearby Interaction camera assistance requires a delegate that refuses relocalization.
+        view.session.delegate = context.coordinator
         context.coordinator.attach(view)
         let session = view.session
         DispatchQueue.main.async { onSessionReady(session) }
@@ -69,7 +71,7 @@ struct ARCameraView: UIViewRepresentable {
         view.session.pause()
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, ARSessionDelegate {
         let layout: BubbleLayout
         let peeps: () -> [NearbyPeep]
         private weak var view: ARView?
@@ -97,7 +99,10 @@ struct ARCameraView: UIViewRepresentable {
         init(layout: BubbleLayout, peeps: @escaping () -> [NearbyPeep]) {
             self.layout = layout
             self.peeps = peeps
+            super.init()
         }
+
+        func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { false }
 
         func attach(_ view: ARView) {
             self.view = view

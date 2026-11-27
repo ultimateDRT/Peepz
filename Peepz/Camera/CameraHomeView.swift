@@ -223,6 +223,8 @@ private struct BubbleOverlay: View {
                 BubbleView(bubble: place.peep.bubble, isPromo: place.peep.isPromo,
                            isFriend: place.peep.isFriend, distance: place.distance)
                     .scaleEffect(place.scale, anchor: .bottom)
+                    // The tip of the tail sits on the point (above their head), not the bubble's middle.
+                    .frame(width: 0, height: 0, alignment: .bottom)
                     .position(place.point)
                     .onTapGesture { onTap(place.peep) }
             }
