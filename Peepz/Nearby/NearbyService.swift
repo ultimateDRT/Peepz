@@ -50,6 +50,12 @@ final class NearbyService: NSObject {
     @ObservationIgnored private var sentTokenTo: Set<MCPeerID> = []
     @ObservationIgnored private var arAssisted: Set<MCPeerID> = []
 
+    /// Diagnostics shown in the debug panel.
+    var debugSummary: String {
+        "UWB distance \(supportsDistance ? "yes" : "no") · direction \(supportsDirection ? "yes" : "no") · camera assist \(supportsCameraAssist ? "yes" : "no")\n" +
+        "AR session given to NI: \(arSession == nil ? "no" : "yes") · connected phones: \(mcSession.connectedPeers.count) · NI sessions: \(niSessions.count) (assisted \(arAssisted.count))"
+    }
+
     /// The camera's AR session, shared with Nearby Interaction for camera assistance.
     @ObservationIgnored private(set) var arSession: ARSession?
 
@@ -324,6 +330,8 @@ extension NearbyService: NISessionDelegate {
               let object = nearbyObjects.first else { return }
         peep.distance = object.distance
         peep.direction = object.direction
+        peep.cameraAssisted = arAssisted.contains(peer)
+        peep.updates += 1
         if let transform = session.worldTransform(for: object) {
             peep.worldPosition = SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
             peep.worldFixAt = Date()
@@ -355,6 +363,7 @@ extension NearbyService: NISessionDelegate {
     /// Turn Apple's reasons into a short tip for the user.
     func session(_ session: NISession, didUpdateAlgorithmConvergence convergence: NIAlgorithmConvergence, for object: NINearbyObject?) {
         guard let peer = mcPeer(for: session), let id = peepIDForPeer[peer], var peep = peeps[id] else { return }
+        peep.convergence = String(describing: convergence.status)
         switch convergence.status {
         case .converged:
             peep.coaching = nil

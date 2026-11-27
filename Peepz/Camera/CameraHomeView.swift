@@ -39,6 +39,7 @@ struct CameraHomeView: View {
             VStack(spacing: 0) {
                 topBar
                 UnlocatedTray(layout: layout) { selectedPeep = $0 }
+                DebugPanel(layout: layout)
                 Spacer()
                 if cameraDenied { cameraDeniedCard }
                 else { EmptyHint(layout: layout) }
@@ -277,6 +278,30 @@ private struct NearbyCount: View {
     let layout: BubbleLayout
     var body: some View {
         Text("\(layout.nearbyCount) nearby").font(Theme.font(14, .bold))
+            .onLongPressGesture { layout.showDebug.toggle() }
+    }
+}
+
+/// Long-press the "nearby" pill to see what the phone is measuring. For testing only.
+private struct DebugPanel: View {
+    let layout: BubbleLayout
+    @Environment(NearbyService.self) private var nearby
+
+    var body: some View {
+        if layout.showDebug {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(nearby.debugSummary)
+                ForEach(layout.debugLines, id: \.self) { Text($0) }
+            }
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.white)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(.black.opacity(0.7)))
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .textSelection(.enabled)
+        }
     }
 }
 

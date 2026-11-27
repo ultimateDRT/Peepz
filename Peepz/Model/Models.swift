@@ -104,6 +104,10 @@ struct NearbyPeep: Identifiable, Equatable {
     var worldFixAt: Date?
     /// Tip for the user while the phone is still working out where this person is.
     var coaching: String?
+    /// Diagnostics: is camera assistance on for this person, and Apple's last convergence status.
+    var cameraAssisted: Bool = false
+    var convergence: String = "–"
+    var updates: Int = 0
 }
 
 /// Very small first-pass text filter. Real moderation comes later (see README).

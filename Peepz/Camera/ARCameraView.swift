@@ -22,6 +22,9 @@ final class BubbleLayout {
     var unlocated: [NearbyPeep] = []
     /// Everyone nearby, on screen or not.
     var nearbyCount: Int = 0
+    /// Diagnostics panel (long-press the "nearby" pill to toggle).
+    var showDebug = false
+    var debugLines: [String] = []
 }
 
 /// The live camera, with ARKit world tracking so bubbles stay pinned in space as you move.
@@ -137,9 +140,30 @@ struct ARCameraView: UIViewRepresentable {
                 }
             }
 
+            if layout.showDebug {
+                var lines: [String] = ["AR tracking: \(Self.describe(frame.camera.trackingState))"]
+                for peep in current where !peep.isSimulated {
+                    let d = peep.distance.map { String(format: "%.2f m", $0) } ?? "no distance"
+                    let dir = peep.direction.map { String(format: "dir x%.2f y%.2f z%.2f", $0.x, $0.y, $0.z) } ?? "no direction"
+                    let age = peep.worldFixAt.map { String(format: "3D fix %.1fs ago", -$0.timeIntervalSinceNow) } ?? "no 3D fix"
+                    var onScreen = "hidden"
+                    if let p = placements[peep.id] { onScreen = "drawn at \(Int(p.point.x)),\(Int(p.point.y))" }
+                    lines.append("\(peep.bubble.emoji) \(d) · \(dir) · \(age) · assist \(peep.cameraAssisted ? "on" : "off") · \(peep.convergence) · updates \(peep.updates) · \(onScreen)")
+                }
+                if lines != layout.debugLines { layout.debugLines = lines }
+            }
+
             if placements != layout.placements { layout.placements = placements }
             if unlocated != layout.unlocated { layout.unlocated = unlocated }
             if current.count != layout.nearbyCount { layout.nearbyCount = current.count }
+        }
+
+        static func describe(_ state: ARCamera.TrackingState) -> String {
+            switch state {
+            case .normal: return "normal"
+            case .notAvailable: return "not available"
+            case .limited(let reason): return "limited (\(reason))"
+            }
         }
 
         static func scale(for distance: Float) -> CGFloat {
