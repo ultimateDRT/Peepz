@@ -51,7 +51,24 @@ final class NearbyService: NSObject {
     @ObservationIgnored private var arAssisted: Set<MCPeerID> = []
 
     /// The camera's AR session, shared with Nearby Interaction for camera assistance.
-    @ObservationIgnored var arSession: ARSession?
+    @ObservationIgnored private(set) var arSession: ARSession?
+
+    /// Give Nearby Interaction the camera's AR session. Any distance sessions that started before the
+    /// camera was ready are restarted, because camera assistance can only be switched on before a session runs.
+    func attachARSession(_ session: ARSession) {
+        guard arSession !== session else { return }
+        arSession = session
+        guard supportsCameraAssist else { return }
+        for peer in Array(niSessions.keys) where !arAssisted.contains(peer) {
+            niSessions[peer]?.invalidate()
+            niSessions[peer] = nil
+            niConfigs[peer] = nil
+            sentTokenTo.remove(peer)
+            if mcSession.connectedPeers.contains(peer) {
+                startRanging(with: peer)
+            }
+        }
+    }
 
     static let serviceType = "peepz-bbl"
 
@@ -309,6 +326,8 @@ extension NearbyService: NISessionDelegate {
         peep.direction = object.direction
         if let transform = session.worldTransform(for: object) {
             peep.worldPosition = SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+            peep.worldFixAt = Date()
+            peep.coaching = nil
         }
         peeps[id] = peep
     }
@@ -330,6 +349,29 @@ extension NearbyService: NISessionDelegate {
         @unknown default:
             break
         }
+    }
+
+    /// Camera assistance needs the phone to move a little before it can place someone in 3D.
+    /// Turn Apple's reasons into a short tip for the user.
+    func session(_ session: NISession, didUpdateAlgorithmConvergence convergence: NIAlgorithmConvergence, for object: NINearbyObject?) {
+        guard let peer = mcPeer(for: session), let id = peepIDForPeer[peer], var peep = peeps[id] else { return }
+        switch convergence.status {
+        case .converged:
+            peep.coaching = nil
+        case .notConverged(let reasons):
+            if reasons.contains(.insufficientLighting) {
+                peep.coaching = "Needs more light to place them"
+            } else if reasons.contains(.insufficientHorizontalSweep) {
+                peep.coaching = "Move your phone slowly side to side"
+            } else if reasons.contains(.insufficientVerticalSweep) {
+                peep.coaching = "Move your phone slowly up and down"
+            } else {
+                peep.coaching = "Move around a little to place them"
+            }
+        default:
+            peep.coaching = "Finding where they are…"
+        }
+        peeps[id] = peep
     }
 
     func sessionSuspensionEnded(_ session: NISession) {

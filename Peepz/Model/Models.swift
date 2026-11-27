@@ -100,6 +100,10 @@ struct NearbyPeep: Identifiable, Equatable {
     var direction: SIMD3<Float>?
     /// Where the bubble should float in the AR world, if known.
     var worldPosition: SIMD3<Float>?
+    /// When `worldPosition` was last measured. Old fixes are ignored so bubbles don't hang in mid-air.
+    var worldFixAt: Date?
+    /// Tip for the user while the phone is still working out where this person is.
+    var coaching: String?
 }
 
 /// Very small first-pass text filter. Real moderation comes later (see README).

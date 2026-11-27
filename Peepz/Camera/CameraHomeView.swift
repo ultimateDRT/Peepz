@@ -3,6 +3,9 @@ import ARKit
 import AVFoundation
 
 /// Home screen: the camera, with bubbles floating above people, and your own bubble in the bottom bar.
+///
+/// Performance: the bubbles move every frame, so they live in `BubbleLayout` and are drawn by small
+/// child views. This view's own body only re-runs when you change something (your bubble, a sheet...).
 struct CameraHomeView: View {
     @Environment(AppState.self) private var app
     @Environment(NearbyService.self) private var nearby
@@ -16,46 +19,41 @@ struct CameraHomeView: View {
     /// False in the iOS Simulator, where there is no camera.
     private let arSupported = ARWorldTrackingConfiguration.isSupported
 
-    private var visiblePeeps: [NearbyPeep] {
-        var list = Array(nearby.peeps.values)
-        if app.demoMode {
-            list += SimulatedCrowd.peeps.map { peep in
-                var p = peep
-                p.isFriend = app.friends.contains(p.id)
-                return p
-            }
-        }
-        return list
-            .filter { !app.blocked.contains($0.id) }
-            .sorted { $0.id < $1.id }
-    }
-
     var body: some View {
         ZStack {
             if arSupported {
-                ARCameraView(peeps: visiblePeeps, layout: layout) { session in
-                    nearby.arSession = session
+                ARCameraView(layout: layout, peeps: { [app, nearby] in
+                    Self.currentPeeps(app: app, nearby: nearby)
+                }, onSessionReady: { [nearby] session in
+                    nearby.attachARSession(session)
                     nearby.start()
-                }
+                })
                 .ignoresSafeArea()
             } else {
                 SimulatorBackdrop().ignoresSafeArea()
             }
 
-            bubbleOverlay.ignoresSafeArea()
+            BubbleOverlay(layout: layout) { selectedPeep = $0 }
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
+                UnlocatedTray(layout: layout) { selectedPeep = $0 }
                 Spacer()
                 if cameraDenied { cameraDeniedCard }
-                else if visiblePeeps.isEmpty { emptyHint }
+                else { EmptyHint(layout: layout) }
                 bottomBar
             }
         }
         .onAppear {
             cameraDenied = AVCaptureDevice.authorizationStatus(for: .video) == .denied
-            if !arSupported { nearby.start() }
+            if !arSupported {
+                nearby.start()
+                refreshSimulatorLayout()
+            }
         }
+        .onChange(of: app.demoMode) { if !arSupported { refreshSimulatorLayout() } }
+        .onChange(of: app.blocked) { if !arSupported { refreshSimulatorLayout() } }
         .onChange(of: app.bubble) { nearby.refresh() }
         .onChange(of: app.visibility) { nearby.refresh() }
         .onChange(of: app.friends) { nearby.refresh() }
@@ -73,31 +71,36 @@ struct CameraHomeView: View {
         }
     }
 
-    // MARK: Bubbles
-
-    private var bubbleOverlay: some View {
-        GeometryReader { geo in
-            ForEach(Array(visiblePeeps.enumerated()), id: \.element.id) { index, peep in
-                if let place = placement(for: peep, index: index, in: geo.size) {
-                    BubbleView(bubble: peep.bubble, isPromo: peep.isPromo, isFriend: peep.isFriend, distance: place.distance)
-                        .scaleEffect(place.scale, anchor: .bottom)
-                        .position(place.point)
-                        .onTapGesture { selectedPeep = peep }
-                        .animation(.linear(duration: 0.1), value: place)
-                        .transition(.scale.combined(with: .opacity))
-                }
+    /// Everyone to show: real people nearby, plus demo people if Demo is on, minus anyone blocked.
+    static func currentPeeps(app: AppState, nearby: NearbyService) -> [NearbyPeep] {
+        var list = Array(nearby.peeps.values)
+        if app.demoMode { list += SimulatedCrowd.peeps }
+        return list
+            .filter { !app.blocked.contains($0.id) }
+            .map { peep in
+                var p = peep
+                p.isFriend = app.friends.contains(p.id)
+                return p
             }
-        }
+            .sorted { $0.id < $1.id }
     }
 
-    private func placement(for peep: NearbyPeep, index: Int, in size: CGSize) -> Placement? {
-        if arSupported { return layout.placements[peep.id] }
-        // Simulator: a fixed scattered layout.
+    /// Simulator only: a fixed scattered layout, since there's no camera or AR.
+    private func refreshSimulatorLayout() {
+        let size = UIScreen.main.bounds.size
         let columns: [CGFloat] = [0.3, 0.7, 0.45, 0.25, 0.72, 0.5]
         let rows: [CGFloat] = [0.2, 0.3, 0.45, 0.55, 0.62, 0.36]
-        let i = index % columns.count
-        return Placement(point: CGPoint(x: size.width * columns[i], y: size.height * rows[i]),
-                         scale: 0.9 - CGFloat(i % 3) * 0.1, distance: peep.distance ?? Float(2 + i))
+        var placements: [String: Placement] = [:]
+        let peeps = Self.currentPeeps(app: app, nearby: nearby)
+        for (index, peep) in peeps.enumerated() {
+            let i = index % columns.count
+            let distance = peep.distance ?? Float(2 + i)
+            placements[peep.id] = Placement(peep: peep,
+                                            point: CGPoint(x: size.width * columns[i], y: size.height * rows[i]),
+                                            scale: 0.9 - CGFloat(i % 3) * 0.1, distance: distance)
+        }
+        layout.placements = placements
+        layout.nearbyCount = peeps.count
     }
 
     // MARK: Bars
@@ -108,7 +111,7 @@ struct CameraHomeView: View {
             Spacer()
             HStack(spacing: 6) {
                 Image(systemName: "person.2.fill").font(.system(size: 13, weight: .bold))
-                Text("\(visiblePeeps.count) nearby").font(Theme.font(14, .bold))
+                NearbyCount(layout: layout)
             }
             .foregroundStyle(Theme.ink)
             .padding(.horizontal, 12)
@@ -173,17 +176,6 @@ struct CameraHomeView: View {
         .padding(.bottom, 8)
     }
 
-    private var emptyHint: some View {
-        Text(nearby.statusText.isEmpty ? "Nobody nearby yet" : nearby.statusText)
-            .font(Theme.font(14, .medium))
-            .foregroundStyle(Theme.ink)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Capsule().fill(.white.opacity(0.9)))
-            .padding(.bottom, 12)
-    }
-
     private var cameraDeniedCard: some View {
         VStack(spacing: 8) {
             Text("Peepz needs the camera to show bubbles.")
@@ -214,5 +206,94 @@ struct SimulatorBackdrop: View {
                     .multilineTextAlignment(.center)
                     .offset(y: 140)
             )
+    }
+}
+
+// MARK: - Fast-changing pieces (redraw on their own, not with the whole screen)
+
+/// Bubbles pinned above people. Redraws every frame while you move.
+private struct BubbleOverlay: View {
+    let layout: BubbleLayout
+    let onTap: (NearbyPeep) -> Void
+
+    var body: some View {
+        ZStack {
+            ForEach(layout.placements.values.sorted { $0.peep.id < $1.peep.id }, id: \.peep.id) { place in
+                BubbleView(bubble: place.peep.bubble, isPromo: place.peep.isPromo,
+                           isFriend: place.peep.isFriend, distance: place.distance)
+                    .scaleEffect(place.scale, anchor: .bottom)
+                    .position(place.point)
+                    .onTapGesture { onTap(place.peep) }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// People nearby whose position isn't known yet, with a tip for finding them.
+private struct UnlocatedTray: View {
+    let layout: BubbleLayout
+    let onTap: (NearbyPeep) -> Void
+
+    var body: some View {
+        if !layout.unlocated.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(layout.unlocated) { peep in
+                        Button { onTap(peep) } label: {
+                            HStack(spacing: 8) {
+                                Text(peep.bubble.emoji).font(.system(size: 18))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(peep.bubble.text)
+                                        .font(Theme.font(13, .bold))
+                                        .lineLimit(1)
+                                    Text(trayDetail(for: peep))
+                                        .font(Theme.font(11, .medium))
+                                        .foregroundStyle(Theme.ink.opacity(0.6))
+                                        .lineLimit(1)
+                                }
+                            }
+                            .foregroundStyle(Theme.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(.white.opacity(0.92)))
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func trayDetail(for peep: NearbyPeep) -> String {
+        let tip = peep.coaching ?? "Point your camera towards them"
+        if let d = peep.distance { return "\(BubbleView.format(d)) away · \(tip)" }
+        return tip
+    }
+}
+
+private struct NearbyCount: View {
+    let layout: BubbleLayout
+    var body: some View {
+        Text("\(layout.nearbyCount) nearby").font(Theme.font(14, .bold))
+    }
+}
+
+private struct EmptyHint: View {
+    let layout: BubbleLayout
+    @Environment(NearbyService.self) private var nearby
+
+    var body: some View {
+        if layout.nearbyCount == 0 {
+            Text(nearby.statusText.isEmpty ? "Nobody nearby yet" : nearby.statusText)
+                .font(Theme.font(14, .medium))
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(.white.opacity(0.9)))
+                .padding(.bottom, 12)
+        }
     }
 }
