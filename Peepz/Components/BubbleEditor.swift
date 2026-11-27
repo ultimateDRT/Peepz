@@ -23,6 +23,8 @@ struct BubbleEditor: View {
                         set: { bubble.text = String($0.prefix(Bubble.maxLength)) }
                     ))
                     .font(Theme.font(18, .medium))
+                    .foregroundStyle(Theme.ink)
+                    .tint(Theme.pink)
                     .focused($textFocused)
                     .submitLabel(.done)
                     Text("\(bubble.text.count)/\(Bubble.maxLength)")

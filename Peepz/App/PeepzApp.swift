@@ -11,6 +11,7 @@ struct PeepzApp: App {
                 .environment(app)
                 .environment(nearby)
                 .tint(Theme.pink)
+                .preferredColorScheme(.light)
         }
     }
 }
