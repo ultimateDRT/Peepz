@@ -239,7 +239,12 @@ final class NearbyService: NSObject {
             }
             let config = NINearbyPeerConfiguration(peerToken: token)
             let session = niSession(for: peer)
-            if arAssisted.contains(peer) {
+            let isFirstRun = niConfigs[peer] == nil
+            if arAssisted.contains(peer), let arSession {
+                if isFirstRun {
+                    // Must happen before the session's first run(). One shared AR session for every person.
+                    session.setARSession(arSession)
+                }
                 config.isCameraAssistanceEnabled = true
             }
             niConfigs[peer] = config
@@ -293,10 +298,9 @@ final class NearbyService: NSObject {
         let session = NISession()
         session.delegateQueue = .main
         session.delegate = self
-        if supportsCameraAssist, !assistFailed.contains(peer), let arSession {
-            // Must happen before run(). One shared AR session for every person.
-            // GUESS: Apple allows several NISessions to share one ARSession; verify on device.
-            session.setARSession(arSession)
+        // On iOS 26 a session given the AR session straight away has no discovery token, so the camera is
+        // linked later, after the token is read and just before the first run (see linkCamera).
+        if supportsCameraAssist, !assistFailed.contains(peer), arSession != nil {
             arAssisted.insert(peer)
         }
         niSessions[peer] = session
