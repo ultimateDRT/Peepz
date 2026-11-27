@@ -274,7 +274,8 @@ struct ARCameraView: UIViewRepresentable {
         }
 
         static func scale(for distance: Float) -> CGFloat {
-            CGFloat(min(max(2.2 / max(distance, 0.1), 0.55), 1.1))
+            // Shrinks more slowly than the person does: about 0.92 close up, 0.82 at 3 m, 0.62 far away.
+            CGFloat(min(max(1.0 - 0.06 * distance, 0.62), 0.95))
         }
 
         static func round(_ p: CGPoint) -> CGPoint {

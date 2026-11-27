@@ -227,8 +227,11 @@ private struct BubbleOverlay: View {
                     .frame(width: 0, height: 0, alignment: .bottom)
                     .position(place.point)
                     .onTapGesture { onTap(place.peep) }
+                    .transition(.scale(scale: 0.7, anchor: .bottom).combined(with: .opacity))
             }
         }
+        // Quick pop in and out as people enter or leave the view.
+        .animation(.easeOut(duration: 0.18), value: Set(layout.placements.keys))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

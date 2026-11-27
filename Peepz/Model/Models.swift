@@ -65,10 +65,49 @@ enum BubbleColor: String, CaseIterable, Codable, Identifiable {
 }
 
 /// A status bubble: short text, an emoji and a colour.
+/// The look of a bubble. Everyone sees the shape its owner picked.
+enum BubbleShape: String, CaseIterable, Codable, Identifiable {
+    case sticker, candy, ink, glass, nameTag, halo, cloud, speech, burst, crush
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sticker: return "Sticker"
+        case .candy: return "Candy"
+        case .ink: return "Ink"
+        case .glass: return "Glass"
+        case .nameTag: return "Name tag"
+        case .halo: return "Halo"
+        case .cloud: return "Cloud"
+        case .speech: return "Speech"
+        case .burst: return "Burst"
+        case .crush: return "Crush"
+        }
+    }
+}
+
 struct Bubble: Codable, Equatable {
     var text: String
     var emoji: String
     var color: BubbleColor
+    var shape: BubbleShape = .sticker
+
+    init(text: String, emoji: String, color: BubbleColor, shape: BubbleShape = .sticker) {
+        self.text = text
+        self.emoji = emoji
+        self.color = color
+        self.shape = shape
+    }
+
+    // Bubbles saved, or sent by phones, from before shapes existed have no shape: use Sticker.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decode(String.self, forKey: .text)
+        emoji = try c.decode(String.self, forKey: .emoji)
+        color = try c.decode(BubbleColor.self, forKey: .color)
+        shape = (try? c.decodeIfPresent(BubbleShape.self, forKey: .shape)) ?? .sticker
+    }
 
     static let maxLength = 40
 
