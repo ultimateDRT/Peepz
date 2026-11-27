@@ -23,6 +23,8 @@ struct BubbleEditor: View {
                         set: { bubble.text = String($0.prefix(Bubble.maxLength)) }
                     ))
                     .font(Theme.font(18, .medium))
+                    .foregroundStyle(Theme.ink)
+                    .tint(Theme.pink)
                     .focused($textFocused)
                     .submitLabel(.done)
                     Text("\(bubble.text.count)/\(Bubble.maxLength)")
@@ -44,7 +46,9 @@ struct BubbleEditor: View {
                     HStack(spacing: 8) {
                         ForEach(Bubble.presets, id: \.text) { preset in
                             Button {
+                                let shape = bubble.shape
                                 bubble = preset
+                                bubble.shape = shape
                                 textFocused = false
                             } label: {
                                 Text("\(preset.emoji) \(preset.text)")
@@ -54,6 +58,30 @@ struct BubbleEditor: View {
                                     .padding(.vertical, 10)
                                     .background(Capsule().fill(preset.color.fill.opacity(preset.color == .white ? 1 : 0.35)))
                                     .overlay(Capsule().stroke(Theme.ink.opacity(0.08)))
+                            }
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                label("Shape")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(BubbleShape.allCases) { shape in
+                            let on = bubble.shape == shape
+                            Button {
+                                bubble.shape = shape
+                            } label: {
+                                Text(shape.title)
+                                    .font(Theme.font(14, .bold))
+                                    .foregroundStyle(on ? .white : Theme.ink)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(on ? Theme.ink : .white))
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(on ? Theme.ink : Theme.ink.opacity(0.12), lineWidth: 1.5))
                             }
                         }
                     }

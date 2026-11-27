@@ -3,31 +3,52 @@ import ARKit
 import RealityKit
 import Combine
 import simd
+import Vision
 
 /// Where to draw one bubble on screen this frame.
 struct Placement: Equatable {
+    var peep: NearbyPeep
     var point: CGPoint
     var scale: CGFloat
     var distance: Float?
+    /// True when the bubble was snapped above a person seen by the camera.
+    var onHead = false
+    /// A best guess: heard over Bluetooth only, drawn faded over the one person in view.
+    var approximate = false
 }
 
-/// Screen positions of every bubble, updated about 30 times a second by the AR view.
+/// What the camera screen should show, updated about 30 times a second by the AR view.
+/// Kept separate from the rest of the screen so only the bubbles redraw every frame.
 @Observable
 final class BubbleLayout {
+    /// Bubbles pinned to a person who is in front of the camera.
     var placements: [String: Placement] = [:]
+    /// People nearby whose position isn't known yet. Shown in a tray, never floating in the scene.
+    var unlocated: [NearbyPeep] = []
+    /// Everyone nearby, on screen or not.
+    var nearbyCount: Int = 0
+    /// Diagnostics panel (long-press the "nearby" pill to toggle).
+    var showDebug = false
+    var debugLines: [String] = []
 }
 
 /// The live camera, with ARKit world tracking so bubbles stay pinned in space as you move.
 struct ARCameraView: UIViewRepresentable {
-    var peeps: [NearbyPeep]
     let layout: BubbleLayout
+    /// Called every frame to get the current people. Reading app state here does not redraw SwiftUI.
+    let peeps: () -> [NearbyPeep]
     let onSessionReady: (ARSession) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(layout: layout) }
+    func makeCoordinator() -> Coordinator { Coordinator(layout: layout, peeps: peeps) }
 
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-        view.renderOptions = [.disableMotionBlur, .disableDepthOfField]
+        // Nothing 3D is drawn, so switch off every effect we can to save battery and frame time.
+        view.renderOptions = [
+            .disableMotionBlur, .disableDepthOfField, .disableHDR,
+            .disableGroundingShadows, .disablePersonOcclusion, .disableAREnvironmentLighting,
+            .disableCameraGrain,
+        ]
 
         // These settings are what Nearby Interaction needs to share this session for camera assistance.
         let config = ARWorldTrackingConfiguration()
@@ -37,31 +58,53 @@ struct ARCameraView: UIViewRepresentable {
         config.initialWorldMap = nil
         view.session.run(config)
 
+        // Nearby Interaction camera assistance requires a delegate that refuses relocalization.
+        view.session.delegate = context.coordinator
         context.coordinator.attach(view)
         let session = view.session
         DispatchQueue.main.async { onSessionReady(session) }
         return view
     }
 
-    func updateUIView(_ view: ARView, context: Context) {
-        context.coordinator.peeps = peeps
-    }
+    func updateUIView(_ view: ARView, context: Context) {}
 
     static func dismantleUIView(_ view: ARView, coordinator: Coordinator) {
         coordinator.detach()
         view.session.pause()
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, ARSessionDelegate {
         let layout: BubbleLayout
-        var peeps: [NearbyPeep] = []
+        let peeps: () -> [NearbyPeep]
         private weak var view: ARView?
         private var updateSubscription: Cancellable?
         private var lastTick: TimeInterval = 0
+        private var lastRemoteLog: TimeInterval = 0
 
-        init(layout: BubbleLayout) {
+        // Person detection, used to lift a bubble from someone's phone to above their head.
+        // Finds human shapes only. It does not recognise who anyone is.
+        private let visionQueue = DispatchQueue(label: "peepz.people", qos: .userInitiated)
+        private var visionBusy = false
+        private var lastVision: TimeInterval = 0
+        /// Bodies seen in the last camera image, in screen points, and when.
+        private var bodies: [CGRect] = []
+        private var bodiesAt: TimeInterval = 0
+        /// Smoothed head positions so bubbles don't jitter, by person ID.
+        private var smoothed: [String: CGPoint] = [:]
+
+        /// How far above someone's phone their head usually is, in metres.
+        static let phoneToHead: Float = 0.45
+
+        /// A measured position older than this is not trusted (the person may have moved).
+        static let maxFixAge: TimeInterval = 4
+
+        init(layout: BubbleLayout, peeps: @escaping () -> [NearbyPeep]) {
             self.layout = layout
+            self.peeps = peeps
+            super.init()
         }
+
+        func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { false }
 
         func attach(_ view: ARView) {
             self.view = view
@@ -85,49 +128,178 @@ struct ARCameraView: UIViewRepresentable {
             let cameraTransform = frame.camera.transform
             let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
             let worldToCamera = cameraTransform.inverse
+            let current = peeps()
 
-            var result: [String: Placement] = [:]
-            var unplaced: [NearbyPeep] = []
+            let focal = pointsPerMetre(frame: frame, size: size)
+            var placements: [String: Placement] = [:]
+            var unlocated: [NearbyPeep] = []
 
-            for (index, peep) in peeps.enumerated() {
-                if var world = peep.worldPosition {
+            var approximate: [NearbyPeep] = []
+            for (index, peep) in current.enumerated() {
+                if peep.isApproximate { approximate.append(peep); continue }
+                let fixIsFresh = peep.isSimulated || (peep.worldFixAt.map { -$0.timeIntervalSinceNow < Self.maxFixAge } ?? false)
+
+                if fixIsFresh, var world = peep.worldPosition {
+                    // Pinned in 3D: shown only when they're in front of the camera.
                     if peep.isSimulated {
-                        // Gentle bob so demo bubbles feel alive.
                         world.y += Float(sin(now * 1.4 + Double(index))) * 0.03
                     } else {
-                        // Nearby Interaction gives the position of their *phone* (hand or chest height).
-                        // GUESS: lift the bubble ~45 cm so it sits above their head. Tune on device.
-                        world.y += 0.45
+                        // Nearby Interaction gives the position of their *phone*. Their head is roughly this far above it.
+                        world.y += Self.phoneToHead
                     }
                     let inCamera = worldToCamera * SIMD4<Float>(world.x, world.y, world.z, 1)
-                    guard inCamera.z < -0.2 else { continue } // behind you
-                    guard let point = view.project(world) else { continue }
+                    guard inCamera.z < -0.2, let point = view.project(world),
+                          point.x > -80, point.x < size.width + 80, point.y > -80, point.y < size.height + 80
+                    else { continue } // behind you or off screen: no bubble
                     let distance = peep.distance ?? simd_distance(world, cameraPosition)
-                    result[peep.id] = Placement(point: point, scale: Self.scale(for: distance), distance: distance)
+                    placements[peep.id] = Placement(peep: peep, point: Self.round(point), scale: Self.scale(for: distance), distance: distance)
+
                 } else if let direction = peep.direction, let distance = peep.distance {
-                    // No AR position, but the UWB chip knows the direction (x = right, y = up from the phone).
-                    let x = size.width / 2 + CGFloat(direction.x) * size.width * 0.8
-                    let y = size.height * 0.32 - CGFloat(direction.y) * size.height * 0.5
-                    result[peep.id] = Placement(point: CGPoint(x: x, y: y), scale: Self.scale(for: distance), distance: distance)
-                } else {
-                    unplaced.append(peep)
+                    // No 3D position, but the UWB chip can see their phone in front of yours.
+                    // Direction only exists while they're roughly in front, so facing away hides the bubble.
+                    // Direction is in your phone's axes: x right, y up, -z straight out of the back camera.
+                    // Project it like the camera would (pinhole model) so it lines up with the picture.
+                    let forward = max(-direction.z, 0.2)
+                    let x = size.width / 2 + focal * CGFloat(direction.x / forward)
+                    let y = size.height / 2 - focal * CGFloat(direction.y / forward)
+                    placements[peep.id] = Placement(peep: peep, point: Self.round(CGPoint(x: x, y: y)),
+                                                    scale: Self.scale(for: distance), distance: distance)
+
+                } else if !peep.isSimulated {
+                    unlocated.append(peep)
                 }
             }
 
-            // People we can't locate yet (older iPhones, or still measuring): show them in a row near the top.
-            for (i, peep) in unplaced.enumerated() {
-                let x = size.width * (CGFloat(i) + 0.5) / CGFloat(max(unplaced.count, 1))
-                let y = size.height * 0.24 + CGFloat(i % 2) * 80
-                result[peep.id] = Placement(point: CGPoint(x: x, y: y), scale: 0.75, distance: peep.distance)
+            let sendRemote = now - lastRemoteLog > 5 && current.contains { !$0.isSimulated }
+            detectPeopleIfDue(frame: frame, now: now, size: size)
+            for (id, place) in placements where !place.peep.isSimulated {
+                var target = place.point
+                var snapped = false
+                if now - bodiesAt < 0.6, let body = Self.body(near: place.point, in: bodies) {
+                    // Bubble's tail sits just above the top of their head.
+                    target = CGPoint(x: body.midX, y: body.minY - 6)
+                    snapped = true
+                }
+                if !snapped, place.peep.worldPosition == nil || !(place.peep.worldFixAt.map { -$0.timeIntervalSinceNow < Self.maxFixAge } ?? false),
+                   let d = place.distance {
+                    // Screen position came from the phone's direction, so lift it by a head's height.
+                    target.y -= focal * CGFloat(Self.phoneToHead / max(d, 0.3))
+                }
+                let previous = smoothed[id] ?? target
+                let point = CGPoint(x: previous.x + (target.x - previous.x) * 0.35,
+                                    y: previous.y + (target.y - previous.y) * 0.35)
+                smoothed[id] = point
+                placements[id]?.point = Self.round(point)
+                placements[id]?.onHead = snapped
+            }
+            // Bluetooth-only people: if exactly one is nearby and the camera sees exactly one person who
+            // isn't already wearing a bubble, float theirs over that person, faded. Otherwise they go in the
+            // Nearby column at the edge.
+            let freeBodies = now - bodiesAt < 0.6
+                ? bodies.filter { body in !placements.values.contains { body.insetBy(dx: -20, dy: -40).contains($0.point) } }
+                : []
+            if approximate.count == 1, freeBodies.count == 1, let peep = approximate.first, let body = freeBodies.first {
+                let target = CGPoint(x: body.midX, y: body.minY - 6)
+                let previous = smoothed[peep.id] ?? target
+                let point = CGPoint(x: previous.x + (target.x - previous.x) * 0.35,
+                                    y: previous.y + (target.y - previous.y) * 0.35)
+                smoothed[peep.id] = point
+                placements[peep.id] = Placement(peep: peep, point: Self.round(point), scale: 0.85,
+                                                distance: nil, onHead: true, approximate: true)
+            }
+            unlocated += approximate.filter { placements[$0.id] == nil }
+            smoothed = smoothed.filter { placements[$0.key] != nil }
+
+            if layout.showDebug || sendRemote {
+                var lines: [String] = ["AR tracking: \(Self.describe(frame.camera.trackingState)) · bodies \(now - bodiesAt < 0.6 ? bodies.count : 0)"]
+                for peep in current where !peep.isSimulated {
+                    let d = peep.distance.map { String(format: "%.2f m", $0) } ?? "no distance"
+                    let dir = peep.direction.map { String(format: "dir x%.2f y%.2f z%.2f", $0.x, $0.y, $0.z) } ?? "no direction"
+                    let age = peep.worldFixAt.map { String(format: "3D fix %.1fs ago", -$0.timeIntervalSinceNow) } ?? "no 3D fix"
+                    var onScreen = "hidden"
+                    if let p = placements[peep.id] { onScreen = "drawn at \(Int(p.point.x)),\(Int(p.point.y))\(p.onHead ? " on head" : "")" }
+                    lines.append("\(peep.bubble.emoji) \(d) · \(dir) · \(age) · assist \(peep.cameraAssisted ? "on" : "off") · \(peep.convergence) · updates \(peep.updates) · \(onScreen)")
+                }
+                if layout.showDebug, lines != layout.debugLines { layout.debugLines = lines }
+                if sendRemote {
+                    lastRemoteLog = now
+                    RemoteLog.send(lines.joined(separator: " | "))
+                }
             }
 
-            if result != layout.placements {
-                layout.placements = result
+            if placements != layout.placements { layout.placements = placements }
+            if unlocated != layout.unlocated { layout.unlocated = unlocated }
+            if current.count != layout.nearbyCount { layout.nearbyCount = current.count }
+        }
+
+        /// Run person detection about five times a second, off the main thread.
+        private func detectPeopleIfDue(frame: ARFrame, now: TimeInterval, size: CGSize) {
+            guard !visionBusy, now - lastVision > 0.2,
+                  peeps().contains(where: { !$0.isSimulated }) else { return }
+            visionBusy = true
+            lastVision = now
+            let pixels = frame.capturedImage
+            let imageSize = CGSize(width: CVPixelBufferGetHeight(pixels), height: CVPixelBufferGetWidth(pixels)) // upright
+            visionQueue.async { [weak self] in
+                let request = VNDetectHumanRectanglesRequest()
+                request.upperBodyOnly = false
+                // Back camera image is landscape; .right turns it upright for a phone held in portrait.
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .right)
+                try? handler.perform([request])
+                let found = (request.results ?? []).filter { $0.confidence > 0.3 }.map {
+                    Self.toScreen($0.boundingBox, imageSize: imageSize, viewSize: size)
+                }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.bodies = found
+                    self.bodiesAt = CACurrentMediaTime()
+                    self.visionBusy = false
+                }
+            }
+        }
+
+        /// Vision's box (0–1, origin bottom-left, upright image) to screen points.
+        /// The camera image fills the screen and is cropped at the sides, like aspect-fill.
+        static func toScreen(_ box: CGRect, imageSize: CGSize, viewSize: CGSize) -> CGRect {
+            let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
+            let shownW = imageSize.width * scale, shownH = imageSize.height * scale
+            let offX = (shownW - viewSize.width) / 2, offY = (shownH - viewSize.height) / 2
+            return CGRect(x: box.minX * shownW - offX,
+                          y: (1 - box.maxY) * shownH - offY,
+                          width: box.width * shownW,
+                          height: box.height * shownH)
+        }
+
+        /// The body whose outline contains, or is closest to, the point where their phone is.
+        static func body(near point: CGPoint, in bodies: [CGRect]) -> CGRect? {
+            bodies
+                .filter { $0.insetBy(dx: -$0.width * 0.25, dy: -$0.height * 0.1).contains(point) }
+                .min { abs($0.midX - point.x) < abs($1.midX - point.x) }
+        }
+
+        /// Roughly how many screen points one metre covers at one metre away, from the camera's focal length.
+        private func pointsPerMetre(frame: ARFrame, size: CGSize) -> CGFloat {
+            let pixels = frame.camera.imageResolution // landscape
+            let upright = CGSize(width: pixels.height, height: pixels.width)
+            let scale = max(size.width / upright.width, size.height / upright.height)
+            return CGFloat(frame.camera.intrinsics[0][0]) * scale
+        }
+
+        static func describe(_ state: ARCamera.TrackingState) -> String {
+            switch state {
+            case .normal: return "normal"
+            case .notAvailable: return "not available"
+            case .limited(let reason): return "limited (\(reason))"
             }
         }
 
         static func scale(for distance: Float) -> CGFloat {
-            CGFloat(min(max(2.2 / max(distance, 0.1), 0.55), 1.1))
+            // Shrinks more slowly than the person does: about 0.92 close up, 0.82 at 3 m, 0.62 far away.
+            CGFloat(min(max(1.0 - 0.06 * distance, 0.62), 0.95))
+        }
+
+        static func round(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: p.x.rounded(), y: p.y.rounded())
         }
     }
 }
