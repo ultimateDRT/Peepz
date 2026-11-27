@@ -72,6 +72,7 @@ struct ARCameraView: UIViewRepresentable {
         private weak var view: ARView?
         private var updateSubscription: Cancellable?
         private var lastTick: TimeInterval = 0
+        private var lastRemoteLog: TimeInterval = 0
 
         /// A measured position older than this is not trusted (the person may have moved).
         static let maxFixAge: TimeInterval = 4
@@ -140,7 +141,8 @@ struct ARCameraView: UIViewRepresentable {
                 }
             }
 
-            if layout.showDebug {
+            let sendRemote = now - lastRemoteLog > 5 && current.contains { !$0.isSimulated }
+            if layout.showDebug || sendRemote {
                 var lines: [String] = ["AR tracking: \(Self.describe(frame.camera.trackingState))"]
                 for peep in current where !peep.isSimulated {
                     let d = peep.distance.map { String(format: "%.2f m", $0) } ?? "no distance"
@@ -150,7 +152,11 @@ struct ARCameraView: UIViewRepresentable {
                     if let p = placements[peep.id] { onScreen = "drawn at \(Int(p.point.x)),\(Int(p.point.y))" }
                     lines.append("\(peep.bubble.emoji) \(d) · \(dir) · \(age) · assist \(peep.cameraAssisted ? "on" : "off") · \(peep.convergence) · updates \(peep.updates) · \(onScreen)")
                 }
-                if lines != layout.debugLines { layout.debugLines = lines }
+                if layout.showDebug, lines != layout.debugLines { layout.debugLines = lines }
+                if sendRemote {
+                    lastRemoteLog = now
+                    RemoteLog.send(lines.joined(separator: " | "))
+                }
             }
 
             if placements != layout.placements { layout.placements = placements }

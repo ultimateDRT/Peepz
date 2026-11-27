@@ -52,6 +52,8 @@ final class NearbyService: NSObject {
     /// Phones where a camera-assisted session failed. They get plain distance sessions instead.
     @ObservationIgnored private var assistFailed: Set<MCPeerID> = []
     @ObservationIgnored private var restarts: [MCPeerID: Int] = [:]
+    /// A throwaway session made at start, to check Nearby Interaction works and to trigger the permission prompt.
+    @ObservationIgnored private var probe: NISession?
 
     /// The last few steps of the connection and distance handshake, newest last, for the debug panel.
     private(set) var events: [String] = []
@@ -60,7 +62,9 @@ final class NearbyService: NSObject {
     }()
 
     private func log(_ text: String) {
-        events.append("\(clock.string(from: Date())) \(text)")
+        let line = "\(clock.string(from: Date())) \(text)"
+        RemoteLog.send(line)
+        events.append(line)
         if events.count > 14 { events.removeFirst(events.count - 14) }
     }
 
@@ -120,7 +124,9 @@ final class NearbyService: NSObject {
         browser.startBrowsingForPeers()
         self.browser = browser
         updateAdvertising()
+        RemoteLog.send(debugSummary.replacingOccurrences(of: "\n", with: " | "))
         log("started · advertising \(advertiser != nil ? "yes" : "no (Hidden)")")
+        runProbe()
         statusText = supportsDistance ? "Looking for people nearby" : "Looking for people nearby (this iPhone can't measure distance)"
     }
 
@@ -262,11 +268,31 @@ final class NearbyService: NSObject {
 
     // MARK: - Nearby Interaction
 
+    /// Make a plain session and point it at itself. Nearby Interaction asks the user for permission the
+    /// first time any session runs, so this gets the prompt out of the way before a real person is found.
+    private func runProbe() {
+        guard supportsDistance, probe == nil else { return }
+        let session = NISession()
+        session.delegateQueue = .main
+        session.delegate = self
+        probe = session
+        guard let token = session.discoveryToken else {
+            log("test session: no token")
+            return
+        }
+        log("test session: token ok, asking permission")
+        session.run(NINearbyPeerConfiguration(peerToken: token))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            self?.probe?.invalidate()
+            self?.probe = nil
+        }
+    }
+
     private func niSession(for peer: MCPeerID) -> NISession {
         if let existing = niSessions[peer] { return existing }
         let session = NISession()
-        session.delegate = self
         session.delegateQueue = .main
+        session.delegate = self
         if supportsCameraAssist, !assistFailed.contains(peer), let arSession {
             // Must happen before run(). One shared AR session for every person.
             // GUESS: Apple allows several NISessions to share one ARSession; verify on device.
@@ -274,6 +300,7 @@ final class NearbyService: NSObject {
             arAssisted.insert(peer)
         }
         niSessions[peer] = session
+        log("new \(arAssisted.contains(peer) ? "camera" : "plain") session · token \(session.discoveryToken == nil ? "missing" : "ok")")
         return session
     }
 
@@ -291,7 +318,20 @@ final class NearbyService: NSObject {
     private func sendToken(to peer: MCPeerID, session: NISession, isReply: Bool) {
         guard let token = session.discoveryToken,
               let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
-        else { log("no distance token available yet"); return }
+        else {
+            log("no distance token available yet")
+            // Camera assistance may be what's stopping it. Swap to a plain distance session and try once more.
+            if arAssisted.contains(peer), !assistFailed.contains(peer) {
+                assistFailed.insert(peer)
+                arAssisted.remove(peer)
+                session.invalidate()
+                niSessions[peer] = nil
+                niConfigs[peer] = nil
+                let plain = niSession(for: peer)
+                sendToken(to: peer, session: plain, isReply: isReply)
+            }
+            return
+        }
         send(.niToken(data, isReply: isReply), to: peer)
         log("sent token\(isReply ? " (reply)" : "")")
         sentTokenTo.insert(peer)
@@ -427,8 +467,16 @@ extension NearbyService: NISessionDelegate {
     }
 
     func session(_ session: NISession, didInvalidateWith error: Error) {
-        guard let peer = mcPeer(for: session) else { return }
         let niError = error as? NIError
+        if session === probe {
+            log("test session stopped: \(niError.map { "NIError \($0.code.rawValue)" } ?? "") \(error.localizedDescription)")
+            probe = nil
+            return
+        }
+        guard let peer = mcPeer(for: session) else {
+            log("old session stopped: \(error.localizedDescription)")
+            return
+        }
         log("distance stopped: \(niError.map { "NIError \($0.code.rawValue)" } ?? "") \(error.localizedDescription)")
         let wasAssisted = arAssisted.contains(peer)
         niSessions[peer] = nil
