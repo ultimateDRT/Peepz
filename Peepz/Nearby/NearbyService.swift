@@ -49,11 +49,26 @@ final class NearbyService: NSObject {
     @ObservationIgnored private var niConfigs: [MCPeerID: NINearbyPeerConfiguration] = [:]
     @ObservationIgnored private var sentTokenTo: Set<MCPeerID> = []
     @ObservationIgnored private var arAssisted: Set<MCPeerID> = []
+    /// Phones where a camera-assisted session failed. They get plain distance sessions instead.
+    @ObservationIgnored private var assistFailed: Set<MCPeerID> = []
+    @ObservationIgnored private var restarts: [MCPeerID: Int] = [:]
+
+    /// The last few steps of the connection and distance handshake, newest last, for the debug panel.
+    private(set) var events: [String] = []
+    @ObservationIgnored private let clock: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
+
+    private func log(_ text: String) {
+        events.append("\(clock.string(from: Date())) \(text)")
+        if events.count > 14 { events.removeFirst(events.count - 14) }
+    }
 
     /// Diagnostics shown in the debug panel.
     var debugSummary: String {
         "UWB distance \(supportsDistance ? "yes" : "no") · direction \(supportsDirection ? "yes" : "no") · camera assist \(supportsCameraAssist ? "yes" : "no")\n" +
-        "AR session given to NI: \(arSession == nil ? "no" : "yes") · connected phones: \(mcSession.connectedPeers.count) · NI sessions: \(niSessions.count) (assisted \(arAssisted.count))"
+        "AR session given to NI: \(arSession == nil ? "no" : "yes") · connected phones: \(mcSession.connectedPeers.count) · NI sessions: \(niSessions.count) (assisted \(arAssisted.count))\n" +
+        "Status: \(statusText)"
     }
 
     /// The camera's AR session, shared with Nearby Interaction for camera assistance.
@@ -105,6 +120,7 @@ final class NearbyService: NSObject {
         browser.startBrowsingForPeers()
         self.browser = browser
         updateAdvertising()
+        log("started · advertising \(advertiser != nil ? "yes" : "no (Hidden)")")
         statusText = supportsDistance ? "Looking for people nearby" : "Looking for people nearby (this iPhone can't measure distance)"
     }
 
@@ -176,6 +192,7 @@ final class NearbyService: NSObject {
     private func sendProfileIfAllowed(to peer: MCPeerID) {
         guard let app else { return }
         if isAllowedToSeeMe(peer), !app.bubble.isEmpty {
+            if !sentProfileTo.contains(peer) { log("sent my bubble") }
             send(.profile(id: app.myID, bubble: app.bubble), to: peer)
             sentProfileTo.insert(peer)
             startRanging(with: peer)
@@ -190,11 +207,15 @@ final class NearbyService: NSObject {
     private func handle(_ message: PeerMessage, from peer: MCPeerID) {
         switch message {
         case .hello(let id):
+            log("got hello")
             peepIDForPeer[peer] = id
             sendProfileIfAllowed(to: peer)
+            // Measure distance to every connected phone, whoever is allowed to see whose bubble.
+            startRanging(with: peer)
 
         case .profile(let id, let bubble):
             peepIDForPeer[peer] = id
+            if peeps[id] == nil { log("got their bubble \(bubble.emoji)") }
             guard let app, !app.blocked.contains(id), TextFilter.isAllowed(bubble.text) else { return }
             var peep = peeps[id] ?? NearbyPeep(id: id, bubble: bubble)
             peep.bubble = bubble
@@ -206,7 +227,10 @@ final class NearbyService: NSObject {
             peeps[id] = nil
 
         case .niToken(let data, let isReply):
-            guard let token = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) else { return }
+            guard supportsDistance else { log("got distance token, but this iPhone has no UWB"); return }
+            guard let token = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) else {
+                log("got distance token, couldn't read it"); return
+            }
             let config = NINearbyPeerConfiguration(peerToken: token)
             let session = niSession(for: peer)
             if arAssisted.contains(peer) {
@@ -214,6 +238,7 @@ final class NearbyService: NSObject {
             }
             niConfigs[peer] = config
             session.run(config)
+            log("got token\(isReply ? " (reply)" : "") · running distance\(config.isCameraAssistanceEnabled ? " + camera" : "")")
             // They may have a fresh session, so always answer with our token (but never answer an answer).
             if !isReply {
                 sendToken(to: peer, session: session, isReply: true)
@@ -224,9 +249,12 @@ final class NearbyService: NSObject {
     private func peerDisconnected(_ peer: MCPeerID) {
         if let id = peepIDForPeer[peer] { peeps[id] = nil }
         peepIDForPeer[peer] = nil
+        log("phone disconnected")
         sentProfileTo.remove(peer)
         sentTokenTo.remove(peer)
         arAssisted.remove(peer)
+        assistFailed.remove(peer)
+        restarts[peer] = nil
         niConfigs[peer] = nil
         niSessions[peer]?.invalidate()
         niSessions[peer] = nil
@@ -239,7 +267,7 @@ final class NearbyService: NSObject {
         let session = NISession()
         session.delegate = self
         session.delegateQueue = .main
-        if supportsCameraAssist, let arSession {
+        if supportsCameraAssist, !assistFailed.contains(peer), let arSession {
             // Must happen before run(). One shared AR session for every person.
             // GUESS: Apple allows several NISessions to share one ARSession; verify on device.
             session.setARSession(arSession)
@@ -251,15 +279,21 @@ final class NearbyService: NSObject {
 
     /// Begin measuring distance to a phone that is showing us its bubble, or that we show ours to.
     private func startRanging(with peer: MCPeerID) {
-        guard supportsDistance, !sentTokenTo.contains(peer) else { return }
+        guard supportsDistance else {
+            if !sentTokenTo.contains(peer) { log("this iPhone has no UWB, can't measure distance") }
+            sentTokenTo.insert(peer)
+            return
+        }
+        guard !sentTokenTo.contains(peer) else { return }
         sendToken(to: peer, session: niSession(for: peer), isReply: false)
     }
 
     private func sendToken(to peer: MCPeerID, session: NISession, isReply: Bool) {
         guard let token = session.discoveryToken,
               let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
-        else { return }
+        else { log("no distance token available yet"); return }
         send(.niToken(data, isReply: isReply), to: peer)
+        log("sent token\(isReply ? " (reply)" : "")")
         sentTokenTo.insert(peer)
     }
 
@@ -276,6 +310,7 @@ extension NearbyService: MCSessionDelegate {
             guard let self else { return }
             switch state {
             case .connected:
+                self.log("phone connected")
                 if let app = self.app { self.send(.hello(id: app.myID), to: peerID) }
             case .notConnected:
                 self.peerDisconnected(peerID)
@@ -331,6 +366,7 @@ extension NearbyService: NISessionDelegate {
         peep.distance = object.distance
         peep.direction = object.direction
         peep.cameraAssisted = arAssisted.contains(peer)
+        if peep.updates == 0 { log("first distance reading \(object.distance.map { String(format: "%.1f m", $0) } ?? "(none)")") }
         peep.updates += 1
         if let transform = session.worldTransform(for: object) {
             peep.worldPosition = SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
@@ -342,6 +378,7 @@ extension NearbyService: NISessionDelegate {
 
     func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
         guard let peer = mcPeer(for: session) else { return }
+        log("lost their phone (\(reason == .timeout ? "timeout" : "they stopped"))")
         switch reason {
         case .timeout:
             // They wandered off or the signal dropped. Try again while still connected.
@@ -391,13 +428,22 @@ extension NearbyService: NISessionDelegate {
 
     func session(_ session: NISession, didInvalidateWith error: Error) {
         guard let peer = mcPeer(for: session) else { return }
+        let niError = error as? NIError
+        log("distance stopped: \(niError.map { "NIError \($0.code.rawValue)" } ?? "") \(error.localizedDescription)")
+        let wasAssisted = arAssisted.contains(peer)
         niSessions[peer] = nil
         niConfigs[peer] = nil
         sentTokenTo.remove(peer)
         arAssisted.remove(peer)
-        if let niError = error as? NIError, niError.code == .userDidNotAllow {
+        if niError?.code == .userDidNotAllow {
             statusText = "Distance is off. Allow Nearby Interactions for Peepz in Settings."
-        } else if mcSession.connectedPeers.contains(peer) {
+            return
+        }
+        // If camera assistance is what broke it, fall back to plain distance and direction.
+        if wasAssisted { assistFailed.insert(peer) }
+        let tries = (restarts[peer] ?? 0) + 1
+        restarts[peer] = tries
+        if tries <= 3, mcSession.connectedPeers.contains(peer) {
             // Start a fresh session and swap tokens again.
             startRanging(with: peer)
         }

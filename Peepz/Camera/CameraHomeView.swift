@@ -232,57 +232,32 @@ private struct BubbleOverlay: View {
 }
 
 /// People nearby whose position isn't known yet, with a tip for finding them.
+/// People nearby who aren't in view. Deliberately not bubble-shaped: a bubble only ever appears
+/// pinned above a phone that the camera can see.
 private struct UnlocatedTray: View {
     let layout: BubbleLayout
     let onTap: (NearbyPeep) -> Void
 
     var body: some View {
-        if !layout.unlocated.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(layout.unlocated) { peep in
-                        Button { onTap(peep) } label: {
-                            HStack(spacing: 8) {
-                                Text(peep.bubble.emoji).font(.system(size: 18))
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(peep.bubble.text)
-                                        .font(Theme.font(13, .bold))
-                                        .lineLimit(1)
-                                    Text(trayDetail(for: peep))
-                                        .font(Theme.font(11, .medium))
-                                        .foregroundStyle(Theme.ink.opacity(0.6))
-                                        .lineLimit(1)
-                                }
-                            }
-                            .foregroundStyle(Theme.ink)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(.white.opacity(0.92)))
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-            .padding(.top, 8)
+        if let peep = layout.unlocated.first {
+            let others = layout.unlocated.count - 1
+            Text(hint(for: peep) + (others > 0 ? " (+\(others) more)" : ""))
+                .font(Theme.font(12, .medium))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.5), radius: 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.top, 4)
         }
     }
 
-    private func trayDetail(for peep: NearbyPeep) -> String {
-        let tip = peep.coaching ?? "Point your camera towards them"
-        if let d = peep.distance { return "\(BubbleView.format(d)) away · \(tip)" }
-        return tip
+    private func hint(for peep: NearbyPeep) -> String {
+        let tip = peep.coaching ?? "point your camera at their phone"
+        if let d = peep.distance { return "Someone \(BubbleView.format(d)) away · \(tip)" }
+        return "Someone nearby · measuring distance…"
     }
 }
 
-private struct NearbyCount: View {
-    let layout: BubbleLayout
-    var body: some View {
-        Text("\(layout.nearbyCount) nearby").font(Theme.font(14, .bold))
-            .onLongPressGesture { layout.showDebug.toggle() }
-    }
-}
-
-/// Long-press the "nearby" pill to see what the phone is measuring. For testing only.
 private struct DebugPanel: View {
     let layout: BubbleLayout
     @Environment(NearbyService.self) private var nearby
@@ -292,6 +267,7 @@ private struct DebugPanel: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(nearby.debugSummary)
                 ForEach(layout.debugLines, id: \.self) { Text($0) }
+                ForEach(Array(nearby.events.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.white.opacity(0.75)) }
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(.white)
