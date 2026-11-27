@@ -11,6 +11,7 @@ struct PeepzApp: App {
             RootView(presence: presence)
                 .environment(app)
                 .environment(nearby)
+                .environment(presence)
                 .tint(Theme.pink)
                 .preferredColorScheme(.light)
         }
@@ -35,6 +36,7 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: app.hasOnboarded)
         .onAppear {
             nearby.attach(app)
+            presence.attach(app)
             updatePresence()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -44,6 +46,8 @@ struct RootView: View {
             updatePresence(phase)
         }
         .onChange(of: app.visibility) { updatePresence() }
+        .onChange(of: app.bubble) { updatePresence() }
+        .onChange(of: app.visibleWhenClosed) { updatePresence() }
         .onChange(of: app.hasOnboarded) {
             if app.hasOnboarded { PresenceService.requestNotificationPermission() }
             updatePresence()
@@ -54,6 +58,6 @@ struct RootView: View {
     /// "Peepz is open here" signal only while on screen and not Hidden; listening for others always.
     private func updatePresence(_ phase: ScenePhase? = nil) {
         guard app.hasOnboarded else { return }
-        presence.update(appActive: (phase ?? scenePhase) == .active, visible: app.visibility != .hidden)
+        presence.update(appActive: (phase ?? scenePhase) == .active)
     }
 }

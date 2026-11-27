@@ -13,6 +13,8 @@ struct Placement: Equatable {
     var distance: Float?
     /// True when the bubble was snapped above a person seen by the camera.
     var onHead = false
+    /// A best guess: heard over Bluetooth only, drawn faded over the one person in view.
+    var approximate = false
 }
 
 /// What the camera screen should show, updated about 30 times a second by the AR view.
@@ -132,7 +134,9 @@ struct ARCameraView: UIViewRepresentable {
             var placements: [String: Placement] = [:]
             var unlocated: [NearbyPeep] = []
 
+            var approximate: [NearbyPeep] = []
             for (index, peep) in current.enumerated() {
+                if peep.isApproximate { approximate.append(peep); continue }
                 let fixIsFresh = peep.isSimulated || (peep.worldFixAt.map { -$0.timeIntervalSinceNow < Self.maxFixAge } ?? false)
 
                 if fixIsFresh, var world = peep.worldPosition {
@@ -188,6 +192,22 @@ struct ARCameraView: UIViewRepresentable {
                 placements[id]?.point = Self.round(point)
                 placements[id]?.onHead = snapped
             }
+            // Bluetooth-only people: if exactly one is nearby and the camera sees exactly one person who
+            // isn't already wearing a bubble, float theirs over that person, faded. Otherwise they go in the
+            // Nearby column at the edge.
+            let freeBodies = now - bodiesAt < 0.6
+                ? bodies.filter { body in !placements.values.contains { body.insetBy(dx: -20, dy: -40).contains($0.point) } }
+                : []
+            if approximate.count == 1, freeBodies.count == 1, let peep = approximate.first, let body = freeBodies.first {
+                let target = CGPoint(x: body.midX, y: body.minY - 6)
+                let previous = smoothed[peep.id] ?? target
+                let point = CGPoint(x: previous.x + (target.x - previous.x) * 0.35,
+                                    y: previous.y + (target.y - previous.y) * 0.35)
+                smoothed[peep.id] = point
+                placements[peep.id] = Placement(peep: peep, point: Self.round(point), scale: 0.85,
+                                                distance: nil, onHead: true, approximate: true)
+            }
+            unlocated += approximate.filter { placements[$0.id] == nil }
             smoothed = smoothed.filter { placements[$0.key] != nil }
 
             if layout.showDebug || sendRemote {

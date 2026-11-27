@@ -11,6 +11,8 @@ final class AppState {
     var blocked: Set<String> { didSet { save() } }
     /// Shows simulated people so the app can be tried with one phone.
     var demoMode: Bool { didSet { save() } }
+    /// Keep sharing your bubble over Bluetooth when Peepz is closed (Everyone only). Off by default.
+    var visibleWhenClosed: Bool { didSet { save() } }
 
     /// Random anonymous ID for this install. Only ever shared with nearby Peepz phones.
     /// TODO: rotate this regularly (see README, privacy).
@@ -24,6 +26,7 @@ final class AppState {
         var blocked: Set<String>
         var demoMode: Bool
         var myID: String
+        var visibleWhenClosed: Bool?
     }
 
     private static let key = "peepz.state.v1"
@@ -38,6 +41,7 @@ final class AppState {
             blocked = stored.blocked
             demoMode = stored.demoMode
             myID = stored.myID
+            visibleWhenClosed = stored.visibleWhenClosed ?? false
         } else {
             bubble = .empty
             visibility = .hidden
@@ -46,6 +50,7 @@ final class AppState {
             blocked = []
             demoMode = true
             myID = String(UUID().uuidString.prefix(12))
+            visibleWhenClosed = false
         }
     }
 
@@ -70,7 +75,8 @@ final class AppState {
 
     private func save() {
         let stored = Stored(bubble: bubble, visibility: visibility, hasOnboarded: hasOnboarded,
-                            friends: friends, blocked: blocked, demoMode: demoMode, myID: myID)
+                            friends: friends, blocked: blocked, demoMode: demoMode, myID: myID,
+                            visibleWhenClosed: visibleWhenClosed)
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: Self.key)
         }

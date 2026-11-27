@@ -147,6 +147,10 @@ struct NearbyPeep: Identifiable, Equatable {
     var cameraAssisted: Bool = false
     var convergence: String = "–"
     var updates: Int = 0
+    /// Heard over Bluetooth only (their Peepz may be closed): no distance or direction.
+    var isApproximate = false
+    /// Bluetooth signal strength in dBm, when heard over Bluetooth.
+    var signal: Int?
 }
 
 /// Very small first-pass text filter. Real moderation comes later (see README).

@@ -120,35 +120,46 @@ struct PeepSheet: View {
     }
 }
 
-/// When other people can see your bubble. Only "while open" is possible today: iOS pauses the
-/// distance and direction measuring when Peepz isn't on screen.
+/// When other people can see your bubble: only while Peepz is open, or also over Bluetooth when it's closed.
 struct BubbleTimingPicker: View {
+    @Environment(AppState.self) private var app
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("When can people see it?")
                 .font(Theme.font(15, .bold))
                 .foregroundStyle(Theme.ink)
-            row(title: "While Peepz is open", detail: "Your bubble shows above you while the app is on screen.",
-                selected: true, enabled: true)
-            row(title: "All the time", detail: "Coming soon. Lets people nearby know you're around when Peepz is closed.",
-                selected: false, enabled: false)
+            row(title: "While PeepZ is open",
+                detail: "Your bubble floats above you while the app is on screen.",
+                selected: !app.visibleWhenClosed) { app.visibleWhenClosed = false }
+            row(title: "All the time",
+                detail: app.visibility == .everyone
+                    ? "When PeepZ is closed, people nearby can still see your bubble in their Nearby list and nudge you. It floats above you once you open the app."
+                    : "Works when you're visible to Everyone. iPhone can't check who's a friend while PeepZ is closed.",
+                selected: app.visibleWhenClosed) { app.visibleWhenClosed = true }
         }
     }
 
-    private func row(title: String, detail: String, selected: Bool, enabled: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .font(.system(size: 20))
-                .foregroundStyle(selected ? Theme.pink : Theme.midGrey)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Theme.font(15, .bold))
-                Text(detail).font(Theme.font(13, .regular)).foregroundStyle(Theme.ink.opacity(0.6))
+    private func row(title: String, detail: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(selected ? Theme.pink : Theme.midGrey)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.font(15, .bold))
+                    Text(detail).font(Theme.font(13, .regular)).foregroundStyle(Theme.ink.opacity(0.6))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(Theme.ink)
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(Theme.ink)
-            Spacer(minLength: 0)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.softGrey))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(selected ? Theme.pink : .clear, lineWidth: 1.5))
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.softGrey))
-        .opacity(enabled ? 1 : 0.55)
+        .buttonStyle(.plain)
     }
 }

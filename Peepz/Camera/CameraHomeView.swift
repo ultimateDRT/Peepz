@@ -9,6 +9,7 @@ import AVFoundation
 struct CameraHomeView: View {
     @Environment(AppState.self) private var app
     @Environment(NearbyService.self) private var nearby
+    @Environment(PresenceService.self) private var presence
 
     @State private var layout = BubbleLayout()
     @State private var editingBubble = false
@@ -22,8 +23,8 @@ struct CameraHomeView: View {
     var body: some View {
         ZStack {
             if arSupported {
-                ARCameraView(layout: layout, peeps: { [app, nearby] in
-                    Self.currentPeeps(app: app, nearby: nearby)
+                ARCameraView(layout: layout, peeps: { [app, nearby, presence] in
+                    Self.currentPeeps(app: app, nearby: nearby, presence: presence)
                 }, onSessionReady: { [nearby] session in
                     nearby.attachARSession(session)
                     nearby.start()
@@ -36,9 +37,12 @@ struct CameraHomeView: View {
             BubbleOverlay(layout: layout) { selectedPeep = $0 }
                 .ignoresSafeArea()
 
+            BluetoothNearbyColumn(layout: layout)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+
             VStack(spacing: 0) {
                 topBar
-                UnlocatedTray(layout: layout) { selectedPeep = $0 }
+                UnlocatedTray(layout: layout)
                 DebugPanel(layout: layout)
                 Spacer()
                 if cameraDenied { cameraDeniedCard }
@@ -73,8 +77,10 @@ struct CameraHomeView: View {
     }
 
     /// Everyone to show: real people nearby, plus demo people if Demo is on, minus anyone blocked.
-    static func currentPeeps(app: AppState, nearby: NearbyService) -> [NearbyPeep] {
+    static func currentPeeps(app: AppState, nearby: NearbyService, presence: PresenceService) -> [NearbyPeep] {
         var list = Array(nearby.peeps.values)
+        // People heard over Bluetooth only, whose Peepz may be closed. Skip anyone already measured by UWB.
+        list += presence.nearbyPeeps.filter { nearby.peeps[$0.id] == nil && $0.id != app.myID }
         if app.demoMode { list += SimulatedCrowd.peeps }
         return list
             .filter { !app.blocked.contains($0.id) }
@@ -92,7 +98,7 @@ struct CameraHomeView: View {
         let columns: [CGFloat] = [0.3, 0.7, 0.45, 0.25, 0.72, 0.5]
         let rows: [CGFloat] = [0.2, 0.3, 0.45, 0.55, 0.62, 0.36]
         var placements: [String: Placement] = [:]
-        let peeps = Self.currentPeeps(app: app, nearby: nearby)
+        let peeps = Self.currentPeeps(app: app, nearby: nearby, presence: presence)
         for (index, peep) in peeps.enumerated() {
             let i = index % columns.count
             let distance = peep.distance ?? Float(2 + i)
@@ -222,6 +228,7 @@ private struct BubbleOverlay: View {
             ForEach(layout.placements.values.sorted { $0.peep.id < $1.peep.id }, id: \.peep.id) { place in
                 BubbleView(bubble: place.peep.bubble, isPromo: place.peep.isPromo,
                            isFriend: place.peep.isFriend, distance: place.distance)
+                    .opacity(place.approximate ? 0.6 : 1)
                     .scaleEffect(place.scale, anchor: .bottom)
                     // The tip of the tail sits on the point (above their head), not the bubble's middle.
                     .frame(width: 0, height: 0, alignment: .bottom)
@@ -238,14 +245,13 @@ private struct BubbleOverlay: View {
 
 /// People nearby whose position isn't known yet, with a tip for finding them.
 /// People nearby who aren't in view. Deliberately not bubble-shaped: a bubble only ever appears
-/// pinned above a phone that the camera can see.
+/// above a person in the camera.
 private struct UnlocatedTray: View {
     let layout: BubbleLayout
-    let onTap: (NearbyPeep) -> Void
 
     var body: some View {
-        if let peep = layout.unlocated.first {
-            let others = layout.unlocated.count - 1
+        if let peep = layout.unlocated.first(where: { !$0.isApproximate }) {
+            let others = layout.unlocated.filter { !$0.isApproximate }.count - 1
             Text(hint(for: peep) + (others > 0 ? " (+\(others) more)" : ""))
                 .font(Theme.font(12, .medium))
                 .foregroundStyle(.white)
@@ -260,6 +266,51 @@ private struct UnlocatedTray: View {
         let tip = peep.coaching ?? "point your camera at their phone"
         if let d = peep.distance { return "Someone \(BubbleView.format(d)) away · \(tip)" }
         return "Someone nearby · measuring distance…"
+    }
+}
+
+/// People heard over Bluetooth whose position isn't known (their PeepZ may be closed).
+/// A slim column at the right edge, strongest signal first. Tap one to nudge them to open PeepZ.
+private struct BluetoothNearbyColumn: View {
+    let layout: BubbleLayout
+    @Environment(PresenceService.self) private var presence
+    @State private var nudged: Set<String> = []
+
+    var body: some View {
+        let people = layout.unlocated.filter(\.isApproximate)
+        if !people.isEmpty {
+            VStack(alignment: .trailing, spacing: 8) {
+                Text("NEARBY")
+                    .font(Theme.font(10, .bold))
+                    .tracking(1)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                ForEach(people.prefix(6)) { peep in
+                    Button {
+                        presence.nudge(peep.id)
+                        nudged.insert(peep.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(peep.bubble.emoji).font(.system(size: 16))
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(peep.bubble.text).font(Theme.font(12, .bold)).lineLimit(1)
+                                Text(nudged.contains(peep.id) ? "Nudged ✓" : "Tap to nudge")
+                                    .font(Theme.font(10, .medium))
+                                    .foregroundStyle(Theme.ink.opacity(0.55))
+                            }
+                        }
+                        .foregroundStyle(Theme.ink)
+                        .frame(maxWidth: 140, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.8)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(nudged.contains(peep.id))
+                }
+            }
+            .padding(.trailing, 12)
+        }
     }
 }
 

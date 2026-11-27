@@ -27,10 +27,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Peepz uses the camera to show status bubbles above people near you.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>PeepZ uses Bluetooth to tell you when someone nearby has PeepZ open, even when the app is closed.</string>
+	<string>PeepZ uses Bluetooth to find people nearby with PeepZ, and to tell you when someone near you has it open.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
 	</array>
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>Peepz measures how far away other Peepz users are so their bubble floats above the right person. Only people who chose to be visible are measured.</string>
