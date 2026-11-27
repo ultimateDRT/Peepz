@@ -258,6 +258,16 @@ private struct UnlocatedTray: View {
     }
 }
 
+/// Tap (or long-press) the "nearby" pill to see what the phone is measuring. For testing only.
+private struct NearbyCount: View {
+    let layout: BubbleLayout
+    var body: some View {
+        Text("\(layout.nearbyCount) nearby").font(Theme.font(14, .bold))
+            .contentShape(Rectangle())
+            .onTapGesture { layout.showDebug.toggle() }
+    }
+}
+
 private struct DebugPanel: View {
     let layout: BubbleLayout
     @Environment(NearbyService.self) private var nearby
