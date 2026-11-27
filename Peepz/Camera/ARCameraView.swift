@@ -3,6 +3,7 @@ import ARKit
 import RealityKit
 import Combine
 import simd
+import Vision
 
 /// Where to draw one bubble on screen this frame.
 struct Placement: Equatable {
@@ -10,6 +11,8 @@ struct Placement: Equatable {
     var point: CGPoint
     var scale: CGFloat
     var distance: Float?
+    /// True when the bubble was snapped above a person seen by the camera.
+    var onHead = false
 }
 
 /// What the camera screen should show, updated about 30 times a second by the AR view.
@@ -74,6 +77,20 @@ struct ARCameraView: UIViewRepresentable {
         private var lastTick: TimeInterval = 0
         private var lastRemoteLog: TimeInterval = 0
 
+        // Person detection, used to lift a bubble from someone's phone to above their head.
+        // Finds human shapes only. It does not recognise who anyone is.
+        private let visionQueue = DispatchQueue(label: "peepz.people", qos: .userInitiated)
+        private var visionBusy = false
+        private var lastVision: TimeInterval = 0
+        /// Bodies seen in the last camera image, in screen points, and when.
+        private var bodies: [CGRect] = []
+        private var bodiesAt: TimeInterval = 0
+        /// Smoothed head positions so bubbles don't jitter, by person ID.
+        private var smoothed: [String: CGPoint] = [:]
+
+        /// How far above someone's phone their head usually is, in metres.
+        static let phoneToHead: Float = 0.45
+
         /// A measured position older than this is not trusted (the person may have moved).
         static let maxFixAge: TimeInterval = 4
 
@@ -106,6 +123,7 @@ struct ARCameraView: UIViewRepresentable {
             let worldToCamera = cameraTransform.inverse
             let current = peeps()
 
+            let focal = pointsPerMetre(frame: frame, size: size)
             var placements: [String: Placement] = [:]
             var unlocated: [NearbyPeep] = []
 
@@ -117,8 +135,8 @@ struct ARCameraView: UIViewRepresentable {
                     if peep.isSimulated {
                         world.y += Float(sin(now * 1.4 + Double(index))) * 0.03
                     } else {
-                        // Nearby Interaction gives the position of their *phone*. Float the bubble just above it.
-                        world.y += 0.25
+                        // Nearby Interaction gives the position of their *phone*. Their head is roughly this far above it.
+                        world.y += Self.phoneToHead
                     }
                     let inCamera = worldToCamera * SIMD4<Float>(world.x, world.y, world.z, 1)
                     guard inCamera.z < -0.2, let point = view.project(world),
@@ -130,9 +148,11 @@ struct ARCameraView: UIViewRepresentable {
                 } else if let direction = peep.direction, let distance = peep.distance {
                     // No 3D position, but the UWB chip can see their phone in front of yours.
                     // Direction only exists while they're roughly in front, so facing away hides the bubble.
-                    // x is to the right of your phone; spread it across the screen.
-                    let x = size.width / 2 + CGFloat(direction.x) * size.width * 0.9
-                    let y = size.height * 0.4 - CGFloat(direction.y) * size.height * 0.6
+                    // Direction is in your phone's axes: x right, y up, -z straight out of the back camera.
+                    // Project it like the camera would (pinhole model) so it lines up with the picture.
+                    let forward = max(-direction.z, 0.2)
+                    let x = size.width / 2 + focal * CGFloat(direction.x / forward)
+                    let y = size.height / 2 - focal * CGFloat(direction.y / forward)
                     placements[peep.id] = Placement(peep: peep, point: Self.round(CGPoint(x: x, y: y)),
                                                     scale: Self.scale(for: distance), distance: distance)
 
@@ -142,14 +162,37 @@ struct ARCameraView: UIViewRepresentable {
             }
 
             let sendRemote = now - lastRemoteLog > 5 && current.contains { !$0.isSimulated }
+            detectPeopleIfDue(frame: frame, now: now, size: size)
+            for (id, place) in placements where !place.peep.isSimulated {
+                var target = place.point
+                var snapped = false
+                if now - bodiesAt < 0.6, let body = Self.body(near: place.point, in: bodies) {
+                    // Bubble's tail sits just above the top of their head.
+                    target = CGPoint(x: body.midX, y: body.minY - 6)
+                    snapped = true
+                }
+                if !snapped, place.peep.worldPosition == nil || !(place.peep.worldFixAt.map { -$0.timeIntervalSinceNow < Self.maxFixAge } ?? false),
+                   let d = place.distance {
+                    // Screen position came from the phone's direction, so lift it by a head's height.
+                    target.y -= focal * CGFloat(Self.phoneToHead / max(d, 0.3))
+                }
+                let previous = smoothed[id] ?? target
+                let point = CGPoint(x: previous.x + (target.x - previous.x) * 0.35,
+                                    y: previous.y + (target.y - previous.y) * 0.35)
+                smoothed[id] = point
+                placements[id]?.point = Self.round(point)
+                placements[id]?.onHead = snapped
+            }
+            smoothed = smoothed.filter { placements[$0.key] != nil }
+
             if layout.showDebug || sendRemote {
-                var lines: [String] = ["AR tracking: \(Self.describe(frame.camera.trackingState))"]
+                var lines: [String] = ["AR tracking: \(Self.describe(frame.camera.trackingState)) · bodies \(now - bodiesAt < 0.6 ? bodies.count : 0)"]
                 for peep in current where !peep.isSimulated {
                     let d = peep.distance.map { String(format: "%.2f m", $0) } ?? "no distance"
                     let dir = peep.direction.map { String(format: "dir x%.2f y%.2f z%.2f", $0.x, $0.y, $0.z) } ?? "no direction"
                     let age = peep.worldFixAt.map { String(format: "3D fix %.1fs ago", -$0.timeIntervalSinceNow) } ?? "no 3D fix"
                     var onScreen = "hidden"
-                    if let p = placements[peep.id] { onScreen = "drawn at \(Int(p.point.x)),\(Int(p.point.y))" }
+                    if let p = placements[peep.id] { onScreen = "drawn at \(Int(p.point.x)),\(Int(p.point.y))\(p.onHead ? " on head" : "")" }
                     lines.append("\(peep.bubble.emoji) \(d) · \(dir) · \(age) · assist \(peep.cameraAssisted ? "on" : "off") · \(peep.convergence) · updates \(peep.updates) · \(onScreen)")
                 }
                 if layout.showDebug, lines != layout.debugLines { layout.debugLines = lines }
@@ -162,6 +205,59 @@ struct ARCameraView: UIViewRepresentable {
             if placements != layout.placements { layout.placements = placements }
             if unlocated != layout.unlocated { layout.unlocated = unlocated }
             if current.count != layout.nearbyCount { layout.nearbyCount = current.count }
+        }
+
+        /// Run person detection about five times a second, off the main thread.
+        private func detectPeopleIfDue(frame: ARFrame, now: TimeInterval, size: CGSize) {
+            guard !visionBusy, now - lastVision > 0.2,
+                  peeps().contains(where: { !$0.isSimulated }) else { return }
+            visionBusy = true
+            lastVision = now
+            let pixels = frame.capturedImage
+            let imageSize = CGSize(width: CVPixelBufferGetHeight(pixels), height: CVPixelBufferGetWidth(pixels)) // upright
+            visionQueue.async { [weak self] in
+                let request = VNDetectHumanRectanglesRequest()
+                request.upperBodyOnly = false
+                // Back camera image is landscape; .right turns it upright for a phone held in portrait.
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixels, orientation: .right)
+                try? handler.perform([request])
+                let found = (request.results ?? []).filter { $0.confidence > 0.3 }.map {
+                    Self.toScreen($0.boundingBox, imageSize: imageSize, viewSize: size)
+                }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.bodies = found
+                    self.bodiesAt = CACurrentMediaTime()
+                    self.visionBusy = false
+                }
+            }
+        }
+
+        /// Vision's box (0–1, origin bottom-left, upright image) to screen points.
+        /// The camera image fills the screen and is cropped at the sides, like aspect-fill.
+        static func toScreen(_ box: CGRect, imageSize: CGSize, viewSize: CGSize) -> CGRect {
+            let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
+            let shownW = imageSize.width * scale, shownH = imageSize.height * scale
+            let offX = (shownW - viewSize.width) / 2, offY = (shownH - viewSize.height) / 2
+            return CGRect(x: box.minX * shownW - offX,
+                          y: (1 - box.maxY) * shownH - offY,
+                          width: box.width * shownW,
+                          height: box.height * shownH)
+        }
+
+        /// The body whose outline contains, or is closest to, the point where their phone is.
+        static func body(near point: CGPoint, in bodies: [CGRect]) -> CGRect? {
+            bodies
+                .filter { $0.insetBy(dx: -$0.width * 0.25, dy: -$0.height * 0.1).contains(point) }
+                .min { abs($0.midX - point.x) < abs($1.midX - point.x) }
+        }
+
+        /// Roughly how many screen points one metre covers at one metre away, from the camera's focal length.
+        private func pointsPerMetre(frame: ARFrame, size: CGSize) -> CGFloat {
+            let pixels = frame.camera.imageResolution // landscape
+            let upright = CGSize(width: pixels.height, height: pixels.width)
+            let scale = max(size.width / upright.width, size.height / upright.height)
+            return CGFloat(frame.camera.intrinsics[0][0]) * scale
         }
 
         static func describe(_ state: ARCamera.TrackingState) -> String {
